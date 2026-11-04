@@ -1,0 +1,2761 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vision inspection estimator</title>
+<style>
+  :root {
+    --bg: #f5f7fa; --surface: #ffffff; --text: #17212f; --border: #c9d2de;
+    --accent: #0757b8; --accent-soft: rgba(7, 87, 184, 0.12);
+    --muted: #5a6577; --ok: #176b3f; --bad: #a3261d; --unknown: #5f6b7a;
+    --pulse: #a85a00; color-scheme: light;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme]) {
+      --bg: #101722; --surface: #192333; --text: #edf2fa; --border: #526278;
+      --accent: #90beff; --accent-soft: rgba(144, 190, 255, 0.18);
+      --muted: #aab6c8; --ok: #6ed49b; --bad: #ff9a8f; --unknown: #b9c4d4;
+      --pulse: #ffc06a; color-scheme: dark;
+    }
+  }
+  :root[data-theme="light"] {
+    --bg: #f5f7fa; --surface: #ffffff; --text: #17212f; --border: #c9d2de;
+    --accent: #0757b8; --accent-soft: rgba(7, 87, 184, 0.12);
+    --muted: #5a6577; --ok: #176b3f; --bad: #a3261d; --unknown: #5f6b7a;
+    --pulse: #a85a00; color-scheme: light;
+  }
+  :root[data-theme="dark"] {
+    --bg: #101722; --surface: #192333; --text: #edf2fa; --border: #526278;
+    --accent: #90beff; --accent-soft: rgba(144, 190, 255, 0.18);
+    --muted: #aab6c8; --ok: #6ed49b; --bad: #ff9a8f; --unknown: #b9c4d4;
+    --pulse: #ffc06a; color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0 auto; padding: 24px; max-width: 1600px;
+    background: var(--bg); color: var(--text); line-height: 1.5;
+  }
+  h1, h2, h3 { line-height: 1.2; }
+  h2 { margin-top: 0; }
+  a { color: var(--accent); }
+  header { margin-bottom: 16px; }
+  .header-top { display: flex; gap: 16px; align-items: start; justify-content: space-between; flex-wrap: wrap; }
+  .header-top > div { min-width: 0; }
+  .header-tools { display: flex; gap: 12px; align-items: end; flex-wrap: wrap; }
+  .header-tools .field { min-width: 220px; }
+  nav[aria-label="Estimator sections"] { display: flex; flex-wrap: wrap; gap: 8px; margin-block: 12px; }
+  nav[aria-label="Estimator sections"] a {
+    padding: 10px 14px; border: 1px solid var(--border); border-radius: 999px;
+    background: var(--surface); text-decoration: none; min-height: 44px;
+    display: inline-flex; align-items: center;
+  }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-block: 8px 4px; }
+  button, .buttonlike {
+    min-height: 44px; padding: 8px 14px; border: 1px solid var(--border);
+    border-radius: 8px; background: var(--surface); color: var(--text);
+    font: inherit; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+  }
+  button:hover, .buttonlike:hover { border-color: var(--accent); }
+  :root[data-theme="dark"] button.primary { color: #101722; }
+  input, select, textarea {
+    min-height: 44px; max-width: 100%; font: inherit; padding: 8px;
+    border: 1px solid var(--border); border-radius: 8px;
+    background: var(--surface); color: var(--text);
+  }
+  textarea { min-height: 76px; resize: vertical; width: 100%; }
+  :focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+  svg, canvas { max-width: 100%; }
+  canvas { image-rendering: pixelated; display: block; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { padding: 8px; text-align: start; overflow-wrap: anywhere; border-top: 1px solid var(--border); }
+  thead th { border-top: 0; }
+  caption { text-align: start; font-weight: 600; padding-bottom: 6px; }
+  .comparison-scroll { max-width: 100%; overflow-x: auto; overflow-y: hidden; }
+  .comparison-scroll:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+  .comparison-metrics { width: 100%; min-width: 600px; table-layout: fixed; }
+  .comparison-metrics th, .comparison-metrics td { overflow-wrap: break-word; }
+  .comparison-metrics thead th:nth-child(1) { width: 44%; }
+  .comparison-metrics thead th:nth-child(2),
+  .comparison-metrics thead th:nth-child(3),
+  .comparison-metrics thead th:nth-child(4) { width: 18.66%; }
+  .comparison-scroll-hint { margin: 6px 0 0; }
+  .workbench { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 24px; }
+  .workbench > * { min-width: 0; }
+  section {
+    scroll-margin-top: 16px; margin-block: 24px; padding: 20px;
+    border: 1px solid var(--border); border-radius: 12px; background: var(--surface);
+  }
+  aside { align-self: start; position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow: auto; }
+  .aside-card { border: 1px solid var(--border); border-radius: 12px; padding: 16px; background: var(--surface); margin-bottom: 16px; }
+  .fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+  .field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .field label { font-weight: 600; }
+  .field .input-row { display: flex; gap: 6px; align-items: center; min-width: 0; }
+  .field .input-row input[type="number"], .field .input-row input[type="text"] { flex: 1 1 auto; min-width: 0; }
+  .field .unit { color: var(--muted); white-space: nowrap; }
+  .field .help, .help { color: var(--muted); font-size: 0.88rem; margin: 0; }
+  .field .slider { width: 100%; padding: 0; min-height: 28px; }
+  details { border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; margin-top: 12px; }
+  summary { cursor: pointer; font-weight: 600; min-height: 32px; }
+  details .fields { margin-top: 12px; }
+  .formula { border-left: 4px solid var(--accent); padding-left: 12px; color: var(--muted); }
+  .actions-note { font-size: 0.9rem; color: var(--muted); }
+  #action-message { min-height: 1.5em; color: var(--accent); }
+  .results-table th { width: 48%; font-weight: 600; }
+  .checklist p { padding: 6px 8px; border-left: 4px solid var(--unknown); margin: 6px 0; overflow-wrap: anywhere; }
+  .checklist p[data-status="meets"] { border-left-color: var(--ok); }
+  .checklist p[data-status="exceeds"] { border-left-color: var(--bad); }
+  .checklist p[data-status="unassessed"] { border-left-color: var(--unknown); }
+  .errors { border: 1px solid var(--bad); border-radius: 8px; padding: 8px 12px; margin-top: 12px; }
+  .errors h3 { margin: 0 0 6px; color: var(--bad); }
+  .errors p { margin: 4px 0; }
+  .view { margin-top: 16px; }
+  .view-blocks { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+  figure { margin: 0; padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); break-inside: avoid; min-width: 0; }
+  figcaption { font-size: 0.9rem; color: var(--muted); margin-top: 6px; }
+  .svg-scroll { max-width: 100%; overflow-x: auto; overflow-y: hidden; }
+  .view svg { width: 100%; height: auto; display: block; }
+  @media (max-width: 720px) {
+    .svg-scroll svg { min-width: 520px; }
+  }
+  .svg-axis { stroke: var(--muted); stroke-width: 1; }
+  .svg-ray { stroke: var(--accent); stroke-width: 1.5; fill: none; }
+  .svg-object { stroke: var(--text); stroke-width: 2; fill: none; }
+  .svg-sensor { stroke: var(--text); stroke-width: 3; fill: none; }
+  .svg-lens { stroke: var(--accent); stroke-width: 2; fill: none; }
+  .svg-field { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 2; }
+  .svg-margin { fill: none; stroke: var(--bad); stroke-width: 2; stroke-dasharray: 6 4; }
+  .svg-grid { stroke: var(--border); stroke-width: 1; }
+  .svg-feature { fill: var(--accent); }
+  .svg-text { fill: var(--text); font-size: 12px; }
+  .svg-muted { fill: var(--muted); font-size: 11px; }
+  .svg-pulse { fill: var(--pulse); }
+  .svg-flash { fill: var(--ok); }
+  .svg-bar { fill: var(--accent); }
+  .svg-bar-baseline { fill: var(--unknown); }
+  .svg-mark { stroke: var(--bad); stroke-width: 2; stroke-dasharray: 4 3; }
+  .svg-plot { fill: none; stroke: var(--accent); stroke-width: 2; }
+  .svg-plot-secondary { stroke: var(--pulse); stroke-dasharray: 6 4; }
+  .svg-point { fill: var(--bad); }
+  .svg-point-secondary { fill: var(--pulse); }
+  .legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 0.85rem; color: var(--muted); margin-top: 6px; }
+  .legend span::before { content: ""; display: inline-block; width: 16px; height: 4px; margin-right: 6px; vertical-align: middle; background: var(--accent); }
+  .legend .field-key::before { background: var(--accent-soft); border: 1px solid var(--accent); }
+  .legend .margin-key::before { background: var(--bad); }
+  .legend .flash-key::before { background: var(--ok); }
+  .legend .pulse-key::before { background: var(--pulse); }
+  .legend .unknown-key::before { background: var(--unknown); }
+  .lesson-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+  .lesson { border: 1px solid var(--border); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .lesson h3 { margin: 0; font-size: 1rem; }
+  .lesson p { margin: 0; font-size: 0.9rem; color: var(--muted); }
+  #lesson-state { margin-top: 12px; border-left: 4px solid var(--accent); padding-left: 12px; }
+  .compact-list { margin: 4px 0 0; padding-left: 20px; }
+  .compact-list li { margin: 2px 0; overflow-wrap: anywhere; }
+  .print-report { display: none; }
+  @media (max-width: 1100px) {
+    .workbench { grid-template-columns: minmax(0, 1fr); }
+    aside { position: static; max-height: none; overflow: visible; }
+  }
+  @media (max-width: 480px) {
+    body { padding: 12px; }
+    section { padding: 12px; }
+    .fields { grid-template-columns: minmax(0, 1fr); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+  @media print {
+    :root,
+    :root[data-theme],
+    :root:not([data-theme]) {
+      color-scheme: light;
+      --bg: #ffffff; --surface: #ffffff; --text: #000000; --border: #333333;
+      --accent: #0757b8; --accent-soft: rgba(7, 87, 184, 0.12);
+      --muted: #333333; --ok: #176b3f; --bad: #a3261d; --unknown: #5f6b7a;
+      --pulse: #a85a00;
+      background: #ffffff;
+    }
+    body { max-width: none; margin: 0; padding: 0; background: #ffffff; color: #000000; }
+    header, .lessons, .workbench, .actions, #action-message { display: none; }
+    .print-report { display: block; }
+    .svg-scroll { overflow: visible; }
+    .svg-scroll svg { min-width: 0; }
+    .print-report article, .print-report figure, .print-report tr { break-inside: avoid; }
+    .print-report table { font-size: 10pt; }
+    .comparison-scroll { overflow: visible; }
+    .comparison-metrics { min-width: 0; }
+    .comparison-metrics thead th { white-space: nowrap; }
+    .comparison-metrics tr { break-inside: avoid; }
+    .comparison-scroll-hint { display: none; }
+    .print-report a { color: #000000; }
+    .print-report h1 { font-size: 20pt; }
+    @page { margin: 14mm; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="header-top">
+    <div>
+      <h1>Vision inspection estimator</h1>
+      <p>Size an area-scan setup and explore how optics, sampling, motion, light, and focus interact. Every number is a model estimate, not a production inspection guarantee.</p>
+    </div>
+    <div class="header-tools">
+      <div class="field">
+        <label for="scenario-name">Scenario name</label>
+        <input id="scenario-name" type="text" maxlength="120" data-path="name" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="theme-select">Theme</label>
+        <select id="theme-select">
+          <option value="system">System</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+      </div>
+    </div>
+  </div>
+  <nav aria-label="Estimator sections">
+    <a href="#coverage">Coverage</a><a href="#detail">Detail</a>
+    <a href="#motion">Motion</a><a href="#lighting">Lighting</a><a href="#focus">Focus</a>
+  </nav>
+  <div class="actions" role="group" aria-label="Scenario actions">
+    <button id="save-button" type="button">Save scenario</button>
+    <label class="buttonlike" for="import-file">Import scenario</label>
+    <input id="import-file" type="file" accept="application/json,.json" aria-label="Import scenario file">
+    <button id="snapshot-button" type="button">Snapshot comparison</button>
+    <button id="clear-comparison-button" type="button">Clear comparison</button>
+    <button id="reset-button" type="button">Reset example</button>
+    <button id="print-button" type="button">Print report</button>
+  </div>
+  <p class="actions-note">Save writes a validated JSON file. Import replaces the active scenario only after the whole file validates. Reset example keeps the comparison snapshot.</p>
+</header>
+
+<section id="lessons" class="lessons" aria-labelledby="lessons-title">
+  <h2 id="lessons-title">Teaching lessons</h2>
+  <p>Each lesson is a teaching example, not a measurement. Loading a lesson replaces the active scenario and the comparison snapshot. Use <strong>Reset this lesson</strong> to return to its starting setup, or <strong>Return to example</strong> to clear the lesson.</p>
+  <div class="lesson-grid">
+    <article class="lesson">
+      <h3>Speed and exposure</h3>
+      <p>0.1 mm/pixel, 1000 mm/s, 100 µs continuous exposure. Compare 100 µs with 200 µs and see why frame rate alone does not remove blur.</p>
+      <button type="button" data-lesson="speed">Load speed lesson</button>
+    </article>
+    <article class="lesson">
+      <h3>Coverage and sampling</h3>
+      <p>2000 × 1500 pixels over 200 × 150 mm. Double both field dimensions at fixed resolution and watch mm/pixel double.</p>
+      <button type="button" data-lesson="coverage">Load sampling lesson</button>
+    </article>
+    <article class="lesson">
+      <h3>Aperture and light</h3>
+      <p>A confirmed teaching reference at f/4. Move to f/8 and see the light multiplier and the separate depth-of-field and diffraction changes.</p>
+      <button type="button" data-lesson="aperture">Load aperture lesson</button>
+    </article>
+    <article class="lesson">
+      <h3>Continuous and strobe</h3>
+      <p>Global shutter, 1000 µs exposure, 20 µs pulse. Compare 0% and 10% collected ambient signal at 1000 mm/s.</p>
+      <button type="button" data-lesson="strobe">Load strobe lesson</button>
+    </article>
+  </div>
+  <div class="actions">
+    <button type="button" data-action="reset-lesson">Reset this lesson</button>
+    <button type="button" data-action="return-example">Return to example</button>
+  </div>
+  <div id="lesson-state" aria-live="polite">No lesson loaded. The default example is active.</div>
+</section>
+
+<main class="workbench">
+  <div>
+    <section id="coverage" aria-labelledby="coverage-title">
+      <h2 id="coverage-title">Coverage and optics</h2>
+      <p>Choose what to solve. <strong>Distance</strong> and <strong>Focal length</strong> fit the requested object plus margin. <strong>Coverage</strong> evaluates a fixed focal length and object distance and reports any clipping.</p>
+      <div data-controls="optics"></div>
+      <div data-view="coverage"></div>
+      <p class="formula"><strong>Model:</strong> magnification m = f / (u − f); field of view = sensor size / m; finite-distance angle = 2 atan(FOV / 2u). Object distance is from the principal plane, not front-of-lens clearance. <a href="https://www.edmundoptics.com/knowledge-center/application-notes/imaging/understanding-focal-length-and-field-of-view/">Edmund Optics: focal length and field of view</a>.</p>
+    </section>
+
+    <section id="detail" aria-labelledby="detail-title">
+      <h2 id="detail-title">Inspection detail</h2>
+      <p>The pixel requirement is geometric. Contrast, lens MTF, demosaicing, material appearance, illumination geometry, and the inspection algorithm all affect real detection.</p>
+      <div data-controls="inspection"></div>
+      <div data-view="detail"></div>
+      <p class="formula"><strong>Model:</strong> feature pixels = smallest feature / mm per pixel; required image width = field width / (feature / pixels per feature). No arbitrary correction factor is added. Cropping or reading a smaller region of interest reduces coverage but keeps the same mm/pixel when pixel pitch and magnification are unchanged.</p>
+    </section>
+
+    <section id="motion" aria-labelledby="motion-title">
+      <h2 id="motion-title">Motion and capture</h2>
+      <p>Motion is constant speed parallel to the inspection plane. Direction is measured in the image: 0° points right and 90° points down. Global shutter does not remove exposure blur; rolling shutter adds spatial skew on top of per-row exposure.</p>
+      <div data-controls="motion"></div>
+      <div data-controls="capture"></div>
+      <div data-view="motion"></div>
+      <p class="formula"><strong>Model:</strong> displacement = speed × light-integration time. Rolling-shutter common flash window = exposure − first-to-last-row start span. Pulse delay is measured from the first row's exposure start. <a href="https://docs.baslerweb.com/optimizing-image-quality">Basler: image quality and motion</a>, <a href="https://docs.baslerweb.com/electronic-shutter-types">electronic shutter types</a>, <a href="https://docs.baslerweb.com/line-source">flash-window timing</a>.</p>
+    </section>
+
+    <section id="lighting" aria-labelledby="lighting-title">
+      <h2 id="lighting-title">Lighting and exposure</h2>
+      <p>Relative signal is proportional to intensity × integration time / effective f-number squared. A measured reference only scales a comparable, known usable setup; it cannot size an arbitrary lamp from electrical wattage.</p>
+      <div data-controls="lighting"></div>
+      <div data-view="lighting"></div>
+      <p class="formula"><strong>Model:</strong> relative collected signal ∝ I × t / N<sub>eff</sub><sup>2</sup>, with N<sub>eff</sub> = N × (1 + m) under a symmetric pupil assumption. Reference lux applies only with unchanged spectrum, material, optics transmission, and illumination geometry. <a href="https://www.edmundoptics.com/knowledge-center/application-notes/imaging/lens-iris-aperture-setting/">Edmund Optics: aperture and system throughput</a>.</p>
+    </section>
+
+    <section id="focus" aria-labelledby="focus-title">
+      <h2 id="focus-title">Focus and aperture</h2>
+      <p>Height variation is the total object-height range centered on the focused plane. The geometric focus range excludes lens aberrations and diffraction. The Airy diameter is an indicative optical scale, not a pass/fail detection threshold.</p>
+      <div data-controls="focus"></div>
+      <div data-view="focus"></div>
+      <p class="formula"><strong>Model:</strong> symmetric thin-lens cone with defocus diameter from the smaller pixel pitch; N<sub>eff</sub> = N × (1 + m); Airy diameter = 2.44 × wavelength × N<sub>eff</sub>. <a href="https://www.fujifilm.com/sg/en/business/optical-devices/mvlens/terms">Fujifilm: machine vision lens terms</a>, <a href="https://www.edmundoptics.com/knowledge-center/application-notes/testing-and-detection/gauging-depth-of-field-in-your-imaging-system/">Edmund Optics: depth of field</a>, <a href="https://www.edmundoptics.com/knowledge-center/application-notes/imaging/limitations-on-resolution-and-contrast-the-airy-disk/">Edmund Optics: Airy disk</a>.</p>
+    </section>
+  </div>
+
+  <aside aria-label="Sizing results">
+    <div class="aside-card">
+      <h2>Current requirements</h2>
+      <div id="results"></div>
+    </div>
+    <div class="aside-card">
+      <h2>Comparison</h2>
+      <div id="comparison"></div>
+    </div>
+  </aside>
+</main>
+
+<p id="action-message" role="status" aria-live="polite"></p>
+<div class="print-report" id="print-report"></div>
+<script id="vision-model">
+(function () {
+  'use strict';
+
+  function defaultScenario() {
+    return {
+      name: 'Example conveyor inspection',
+      optics: {
+        mode: 'distance', sensorWidthMm: 8.8, sensorHeightMm: 6.6,
+        pixelsX: 2448, pixelsY: 1836, objectWidthMm: 200,
+        objectHeightMm: 150, marginPercent: 20,
+        focalLengthMm: 16, objectDistanceMm: 450
+      },
+      inspection: { featureMm: 0.5, pixelsPerFeature: 5 },
+      motion: {
+        speedMmS: 1000, directionDeg: 0, exposureUs: 100,
+        blurLimitPx: 1, shutter: 'global', rowTimeUs: null,
+        minExposureUs: null, illumination: 'continuous', pulseUs: 20,
+        pulseDelayUs: null, ambientSignalPercent: null
+      },
+      capture: {
+        mode: 'parts', pitchMm: 300, imagesPerPart: 1,
+        axis: 'x', overlapPercent: 20, maxFps: null
+      },
+      lighting: { intensityRatio: 1, reference: null },
+      focus: { fNumber: 4, wavelengthNm: 550, defocusLimitPx: 1, heightVariationMm: 10 }
+    };
+  }
+
+  function positive(value, label) {
+    if (!Number.isFinite(value) || value <= 0) throw new Error(label + ' must be greater than zero');
+  }
+  function nonnegative(value, label) {
+    if (!Number.isFinite(value) || value < 0) throw new Error(label + ' must be zero or greater');
+  }
+  function optionalPositive(value, label) {
+    if (value !== null) positive(value, label);
+  }
+  function finiteResult(value) {
+    if (typeof value === 'number' && !Number.isFinite(value)) throw new Error('Inputs exceed the supported numerical range');
+    if (value && typeof value === 'object') Object.values(value).forEach(finiteResult);
+    return value;
+  }
+
+  function solveOptics(o) {
+    for (const key of ['sensorWidthMm', 'sensorHeightMm', 'objectWidthMm', 'objectHeightMm']) {
+      positive(o[key], key);
+    }
+    for (const key of ['pixelsX', 'pixelsY']) {
+      positive(o[key], key);
+      if (!Number.isInteger(o[key])) throw new Error(key + ' must be an integer');
+    }
+    nonnegative(o.marginPercent, 'Framing margin');
+    const requiredWidthMm = o.objectWidthMm * (1 + o.marginPercent / 100);
+    const requiredHeightMm = o.objectHeightMm * (1 + o.marginPercent / 100);
+    let m = Math.min(o.sensorWidthMm / requiredWidthMm, o.sensorHeightMm / requiredHeightMm);
+    let f = o.focalLengthMm;
+    let u = o.objectDistanceMm;
+    if (o.mode === 'distance') {
+      positive(f, 'Focal length');
+      u = f * (1 + 1 / m);
+    } else if (o.mode === 'focal') {
+      positive(u, 'Object distance');
+      f = u * m / (1 + m);
+    } else if (o.mode === 'coverage') {
+      positive(f, 'Focal length');
+      positive(u, 'Object distance');
+      if (u <= f) throw new Error('Object distance must exceed focal length');
+      m = f / (u - f);
+    } else throw new Error('Choose a supported optical calculation mode');
+    const fovWidthMm = o.sensorWidthMm / m;
+    const fovHeightMm = o.sensorHeightMm / m;
+    const angle = extent => 2 * Math.atan(extent / (2 * u)) * 180 / Math.PI;
+    return {
+      objectDistanceMm: u, focalLengthMm: f, magnification: m,
+      imageDistanceMm: f * (1 + m), fovWidthMm, fovHeightMm,
+      requiredWidthMm, requiredHeightMm,
+      mmPerPixelX: fovWidthMm / o.pixelsX,
+      mmPerPixelY: fovHeightMm / o.pixelsY,
+      pixelPitchXUm: 1000 * o.sensorWidthMm / o.pixelsX,
+      pixelPitchYUm: 1000 * o.sensorHeightMm / o.pixelsY,
+      angleXDeg: angle(fovWidthMm), angleYDeg: angle(fovHeightMm),
+      coverageStatus: fovWidthMm + 1e-9 >= requiredWidthMm &&
+        fovHeightMm + 1e-9 >= requiredHeightMm ? 'meets' : 'exceeds'
+    };
+  }
+
+  function inspectDetail(i, o) {
+    positive(i.featureMm, 'Smallest feature');
+    positive(i.pixelsPerFeature, 'Pixels per feature');
+    const featurePixelsX = i.featureMm / o.mmPerPixelX;
+    const featurePixelsY = i.featureMm / o.mmPerPixelY;
+    const allowedMmPerPixel = i.featureMm / i.pixelsPerFeature;
+    return {
+      featurePixelsX, featurePixelsY, allowedMmPerPixel,
+      requiredPixelsX: Math.ceil(o.fovWidthMm / allowedMmPerPixel - 1e-9),
+      requiredPixelsY: Math.ceil(o.fovHeightMm / allowedMmPerPixel - 1e-9),
+      status: Math.min(featurePixelsX, featurePixelsY) + 1e-9 >= i.pixelsPerFeature ? 'meets' : 'exceeds'
+    };
+  }
+
+  function assessFocus(a, o) {
+    positive(a.fNumber, 'F-number');
+    positive(a.wavelengthNm, 'Wavelength');
+    positive(a.defocusLimitPx, 'Permissible defocus');
+    nonnegative(a.heightVariationMm, 'Object height variation');
+    const u = o.objectDistanceMm;
+    const f = o.focalLengthMm;
+    const c = a.defocusLimitPx * Math.min(o.pixelPitchXUm, o.pixelPitchYUm) / 1000;
+    const k = a.fNumber * c * (u - f) / (f * f);
+    const nearMm = u / (1 + k);
+    const farUnbounded = k >= 1;
+    const farMm = farUnbounded ? null : u / (1 - k);
+    const effectiveFNumber = a.fNumber * (1 + o.magnification);
+    const airyDiameterUm = 2.44 * a.wavelengthNm / 1000 * effectiveFNumber;
+    const halfHeight = a.heightVariationMm / 2;
+    return {
+      nearMm, farMm, farUnbounded,
+      depthOfFieldMm: farUnbounded ? null : farMm - nearMm,
+      effectiveFNumber, airyDiameterUm,
+      airyPixelsX: airyDiameterUm / o.pixelPitchXUm,
+      airyPixelsY: airyDiameterUm / o.pixelPitchYUm,
+      heightStatus: u - halfHeight >= nearMm &&
+        (farUnbounded || u + halfHeight <= farMm) ? 'meets' : 'exceeds'
+    };
+  }
+
+  function assessMotion(m, o, pixelsY) {
+    nonnegative(m.speedMmS, 'Speed');
+    positive(m.exposureUs, 'Exposure');
+    positive(m.blurLimitPx, 'Motion-blur limit');
+    if (!Number.isFinite(m.directionDeg)) throw new Error('Direction must be finite');
+    if (!['global', 'rolling'].includes(m.shutter)) throw new Error('Unsupported shutter');
+    if (!['continuous', 'strobe'].includes(m.illumination)) throw new Error('Unsupported illumination');
+    optionalPositive(m.minExposureUs, 'Camera minimum exposure');
+    if (m.shutter === 'rolling') optionalPositive(m.rowTimeUs, 'Row time');
+    const radians = m.directionDeg * Math.PI / 180;
+    const unitPixelRate = Math.hypot(Math.cos(radians) / o.mmPerPixelX,
+      Math.sin(radians) / o.mmPerPixelY);
+    const pixelRate = m.speedMmS * unitPixelRate;
+    const blur = us => pixelRate * us / 1e6;
+    const rowSpanUs = m.shutter === 'global' ? 0 :
+      m.rowTimeUs === null ? null : m.rowTimeUs * (pixelsY - 1);
+    const flashWindowUs = rowSpanUs === null ? null : Math.max(0, m.exposureUs - rowSpanUs);
+    let timingStatus = 'unassessed';
+    let pulseBlurPx = null;
+    let assessedBlurPx = blur(m.exposureUs);
+    if (m.illumination === 'strobe') {
+      positive(m.pulseUs, 'Pulse duration');
+      if (m.pulseDelayUs !== null) nonnegative(m.pulseDelayUs, 'Pulse delay');
+      if (m.ambientSignalPercent !== null &&
+        (!Number.isFinite(m.ambientSignalPercent) || m.ambientSignalPercent < 0 || m.ambientSignalPercent > 100)) {
+        throw new Error('Ambient signal must be between 0 and 100 percent');
+      }
+      pulseBlurPx = blur(m.pulseUs);
+      if (rowSpanUs !== null && (flashWindowUs <= 0 || m.pulseUs > flashWindowUs)) timingStatus = 'exceeds';
+      else if (rowSpanUs !== null && m.pulseDelayUs !== null) {
+        timingStatus = m.pulseDelayUs >= rowSpanUs &&
+          m.pulseDelayUs + m.pulseUs <= m.exposureUs ? 'meets' : 'exceeds';
+      }
+      assessedBlurPx = timingStatus !== 'meets' || m.ambientSignalPercent === null ? null :
+        m.ambientSignalPercent === 0 ? pulseBlurPx : blur(m.exposureUs);
+    }
+    return {
+      exposureBlurMm: m.speedMmS * m.exposureUs / 1e6,
+      exposureBlurPx: blur(m.exposureUs), pulseBlurPx, assessedBlurPx,
+      pixelRate, unitPixelRate,
+      maxWindowUs: pixelRate === 0 ? null : m.blurLimitPx / pixelRate * 1e6,
+      windowUnbounded: pixelRate === 0,
+      maxSpeedMmS: m.blurLimitPx / (unitPixelRate *
+        (m.illumination === 'continuous' ? m.exposureUs : m.pulseUs) / 1e6),
+      rowSpanUs, flashWindowUs,
+      skewPixels: rowSpanUs === null ? null : blur(rowSpanUs),
+      timingStatus,
+      minimumExposureStatus: m.minExposureUs === null ? 'unassessed' :
+        m.exposureUs >= m.minExposureUs ? 'meets' : 'exceeds',
+      status: assessedBlurPx === null ? 'unassessed' :
+        assessedBlurPx <= m.blurLimitPx + 1e-9 ? 'meets' : 'exceeds'
+    };
+  }
+
+  function assessLighting(l, m, a) {
+    positive(l.intensityRatio, 'Light intensity ratio');
+    const integrationUs = m.illumination === 'strobe' ? m.pulseUs : m.exposureUs;
+    positive(integrationUs, 'Light integration time');
+    const componentOnly = m.illumination === 'strobe' && m.ambientSignalPercent !== 0;
+    const reference = l.reference;
+    if (reference === null) return { status: 'unassessed', componentOnly,
+      integrationUs, signalRatio: null, requiredIntensityRatio: null, requiredIlluminationLux: null };
+    positive(reference.integrationUs, 'Reference integration time');
+    positive(reference.effectiveFNumber, 'Reference effective f-number');
+    optionalPositive(reference.illuminationLux, 'Reference illumination');
+    if (typeof reference.confirmedComparable !== 'boolean' || typeof reference.note !== 'string') {
+      throw new Error('Reference confirmation and note are required');
+    }
+    if (!reference.confirmedComparable) return { status: 'unassessed', componentOnly,
+      integrationUs, signalRatio: null, requiredIntensityRatio: null, requiredIlluminationLux: null };
+    const requiredIntensityRatio = reference.integrationUs / integrationUs *
+      (a.effectiveFNumber / reference.effectiveFNumber) ** 2;
+    return {
+      integrationUs, componentOnly, requiredIntensityRatio,
+      signalRatio: l.intensityRatio / requiredIntensityRatio,
+      requiredIlluminationLux: reference.illuminationLux === null ? null :
+        reference.illuminationLux * requiredIntensityRatio,
+      status: componentOnly ? 'unassessed' :
+        l.intensityRatio >= requiredIntensityRatio ? 'meets' : 'exceeds'
+    };
+  }
+
+  function assessCapture(c, m, o) {
+    optionalPositive(c.maxFps, 'Camera frame-rate limit');
+    let requiredFps;
+    if (c.mode === 'parts') {
+      positive(c.pitchMm, 'Part pitch');
+      positive(c.imagesPerPart, 'Images per part');
+      if (!Number.isInteger(c.imagesPerPart)) throw new Error('Images per part must be an integer');
+      requiredFps = m.speedMmS / c.pitchMm * c.imagesPerPart;
+    } else if (c.mode === 'overlap') {
+      if (!['x', 'y'].includes(c.axis)) throw new Error('Choose horizontal or vertical conveyor travel');
+      if (!Number.isFinite(c.overlapPercent) || c.overlapPercent < 0 || c.overlapPercent >= 100) {
+        throw new Error('Overlap must be at least zero and below 100 percent');
+      }
+      const radians = m.directionDeg * Math.PI / 180;
+      const crossComponent = c.axis === 'x' ? Math.sin(radians) : Math.cos(radians);
+      if (m.speedMmS > 0 && Math.abs(crossComponent) > 1e-9) return {
+        requiredFps: null, status: 'unassessed',
+        reason: 'Overlap sizing requires motion parallel to the selected image axis', strobeDutyPercent: null
+      };
+      const extentMm = c.axis === 'x' ? o.fovWidthMm : o.fovHeightMm;
+      requiredFps = m.speedMmS / (extentMm * (1 - c.overlapPercent / 100));
+    } else throw new Error('Choose parts or overlap capture sizing');
+    return {
+      requiredFps,
+      strobeDutyPercent: m.illumination === 'strobe' ? m.pulseUs * requiredFps / 1e4 : null,
+      status: c.maxFps === null ? 'unassessed' : requiredFps <= c.maxFps ? 'meets' : 'exceeds'
+    };
+  }
+
+  function evaluate(s) {
+    const r = { optics: null, detail: null, focus: null, motion: null,
+      capture: null, lighting: null, errors: [] };
+    function run(group, compute) {
+      try { r[group] = finiteResult(compute()); }
+      catch (error) { r.errors.push({ group, message: error.message }); }
+    }
+    run('optics', () => solveOptics(s.optics));
+    if (r.optics) {
+      run('detail', () => inspectDetail(s.inspection, r.optics));
+      run('focus', () => assessFocus(s.focus, r.optics));
+      run('motion', () => assessMotion(s.motion, r.optics, s.optics.pixelsY));
+      run('capture', () => {
+        nonnegative(s.motion.speedMmS, 'Speed');
+        if (!Number.isFinite(s.motion.directionDeg)) throw new Error('Direction must be finite');
+        if (!['continuous', 'strobe'].includes(s.motion.illumination)) throw new Error('Unsupported illumination');
+        if (s.motion.illumination === 'strobe') positive(s.motion.pulseUs, 'Pulse duration');
+        return assessCapture(s.capture, s.motion, r.optics);
+      });
+    }
+    if (r.focus && r.motion) run('lighting', () => assessLighting(s.lighting, s.motion, r.focus));
+    return r;
+  }
+
+  function validateScenario(s) {
+    if (!s || typeof s !== 'object' || Array.isArray(s)) throw new Error('Scenario must be an object');
+    const shape = defaultScenario();
+    if (s.lighting && s.lighting.reference !== null) shape.lighting.reference = {
+      integrationUs: 100, effectiveFNumber: 4, illuminationLux: null,
+      confirmedComparable: false, note: ''
+    };
+    function walk(value, expected, path) {
+      if (expected === null) {
+        if (value === null) return;
+        if (path === 'scenario.motion.pulseDelayUs' || path === 'scenario.motion.ambientSignalPercent') {
+          nonnegative(value, path);
+        } else optionalPositive(value, path);
+      } else if (typeof expected === 'object') {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(path + ' must be an object');
+        if (Object.keys(value).sort().join(',') !== Object.keys(expected).sort().join(',')) {
+          throw new Error(path + ' has missing or unexpected fields');
+        }
+        for (const key of Object.keys(expected)) walk(value[key], expected[key], path + '.' + key);
+      } else if (typeof value !== typeof expected ||
+        (typeof value === 'number' && !Number.isFinite(value))) throw new Error(path + ' has an invalid type');
+    }
+    walk(s, shape, 'scenario');
+    if (s.name.length > 120) throw new Error('Scenario name exceeds 120 characters');
+    const checks = {
+      optics: ['sensorWidthMm', 'sensorHeightMm', 'pixelsX', 'pixelsY', 'objectWidthMm',
+        'objectHeightMm', 'focalLengthMm', 'objectDistanceMm'],
+      inspection: ['featureMm', 'pixelsPerFeature'],
+      motion: ['exposureUs', 'blurLimitPx', 'pulseUs'],
+      capture: ['pitchMm', 'imagesPerPart'],
+      lighting: ['intensityRatio'],
+      focus: ['fNumber', 'wavelengthNm', 'defocusLimitPx']
+    };
+    for (const [group, keys] of Object.entries(checks)) {
+      for (const key of keys) positive(s[group][key], group + '.' + key);
+    }
+    for (const [group, key] of [['optics', 'marginPercent'], ['motion', 'speedMmS'],
+      ['focus', 'heightVariationMm']]) nonnegative(s[group][key], group + '.' + key);
+    if (s.motion.pulseDelayUs !== null) nonnegative(s.motion.pulseDelayUs, 'Pulse delay');
+    if (s.motion.ambientSignalPercent !== null &&
+      (s.motion.ambientSignalPercent < 0 || s.motion.ambientSignalPercent > 100)) throw new Error('Invalid ambient signal percentage');
+    if (s.capture.overlapPercent < 0 || s.capture.overlapPercent >= 100) throw new Error('Invalid overlap percentage');
+    const enums = [
+      [s.optics.mode, ['distance', 'focal', 'coverage']],
+      [s.motion.shutter, ['global', 'rolling']],
+      [s.motion.illumination, ['continuous', 'strobe']],
+      [s.capture.mode, ['parts', 'overlap']], [s.capture.axis, ['x', 'y']]
+    ];
+    if (enums.some(([value, choices]) => !choices.includes(value))) throw new Error('Unsupported scenario option');
+    if (![s.optics.pixelsX, s.optics.pixelsY, s.capture.imagesPerPart].every(Number.isInteger)) {
+      throw new Error('Pixel counts and images per part must be integers');
+    }
+    const reference = s.lighting.reference;
+    if (reference !== null && reference.note.length > 1000) throw new Error('Reference note exceeds 1000 characters');
+    const result = evaluate(s);
+    if (result.errors.length) throw new Error(result.errors[0].message);
+  }
+
+  function encodeScenario(scenario) {
+    validateScenario(scenario);
+    return JSON.stringify({ format: 'vision-inspection-estimator', version: 1, scenario });
+  }
+  function decodeScenario(text) {
+    if (typeof text !== 'string' || text.length > 1000000) throw new Error('Scenario file exceeds the supported size');
+    let file;
+    try { file = JSON.parse(text); }
+    catch { throw new Error('Scenario file is not valid JSON'); }
+    if (!file || file.format !== 'vision-inspection-estimator') throw new Error('Unsupported scenario format');
+    if (file.version !== 1) throw new Error('Unsupported scenario version');
+    if (Object.keys(file).sort().join(',') !== 'format,scenario,version') throw new Error('Unexpected scenario file fields');
+    validateScenario(file.scenario);
+    return JSON.parse(JSON.stringify(file.scenario));
+  }
+
+  function motionSamples(m) {
+    const samples = [];
+    function add(component, startUs, durationUs, totalWeight) {
+      if (totalWeight <= 0) return;
+      const count = 128;
+      for (let i = 0; i < count; i++) samples.push({
+        component, timeUs: startUs + durationUs * (i + 0.5) / count,
+        weight: totalWeight / count
+      });
+    }
+    if (m.illumination === 'continuous') add('ambient', 0, m.exposureUs, 1);
+    else {
+      if (m.ambientSignalPercent === null || m.pulseDelayUs === null) return null;
+      const ambientWeight = m.ambientSignalPercent / 100;
+      add('ambient', 0, m.exposureUs, ambientWeight);
+      add('pulse', m.pulseDelayUs, m.pulseUs, 1 - ambientWeight);
+    }
+    return samples;
+  }
+
+  function changeRatio(before, after) {
+    return Number.isFinite(before) && Number.isFinite(after) && before !== 0 ? after / before : null;
+  }
+
+  globalThis.VisionModel = {
+    defaultScenario, solveOptics, inspectDetail, assessFocus, assessMotion,
+    assessCapture, assessLighting, evaluate, encodeScenario, decodeScenario,
+    motionSamples, changeRatio
+  };
+})();
+</script>
+<script id="vision-ui">
+(function () {
+  'use strict';
+  const M = globalThis.VisionModel;
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  const state = {
+    active: M.defaultScenario(), comparison: null,
+    theme: 'system', speedUnit: 'mm/s', sensorPreset: '8.8x6.6', lesson: null
+  };
+  let DESC = new Map();
+  let pendingView = null;
+  let viewFrame = 0;
+  const $ = selector => document.querySelector(selector);
+
+  const SENSOR_PRESETS = [
+    { id: '4.8x3.6', label: '1/3" approx: 4.8 × 3.6 mm', w: 4.8, h: 3.6 },
+    { id: '6.4x4.8', label: '1/2" approx: 6.4 × 4.8 mm', w: 6.4, h: 4.8 },
+    { id: '7.2x5.4', label: '1/1.8" approx: 7.2 × 5.4 mm', w: 7.2, h: 5.4 },
+    { id: '8.8x6.6', label: '2/3" approx: 8.8 × 6.6 mm', w: 8.8, h: 6.6 },
+    { id: '12.8x9.6', label: '1" approx: 12.8 × 9.6 mm', w: 12.8, h: 9.6 },
+    { id: '36x24', label: '35 mm full frame: 36 × 24 mm', w: 36, h: 24 }
+  ];
+  const SPEED_UNITS = { 'mm/s': 1, 'm/s': 1000, 'm/min': 1000 / 60 };
+
+  function clone(value) { return JSON.parse(JSON.stringify(value)); }
+  function formatNumber(value, digits = 5) {
+    if (value === null || value === undefined || !Number.isFinite(value)) return 'Not assessed';
+    return new Intl.NumberFormat('en', { maximumSignificantDigits: digits }).format(value);
+  }
+  function formatQuantity(value, unit, unbounded = false) {
+    if (unbounded) return 'No finite limit in this model';
+    if (value === null || !Number.isFinite(value)) return 'Not assessed';
+    return (formatNumber(value) + ' ' + unit).trim();
+  }
+  function pair(a, b, unit, separator = ' × ') {
+    if (a === null || b === null || !Number.isFinite(a) || !Number.isFinite(b)) return 'Not assessed';
+    return formatQuantity(a, unit) + separator + formatQuantity(b, unit);
+  }
+  function getPath(path) {
+    return path.split('.').reduce((value, key) => value === null || value === undefined ? undefined : value[key], state.active);
+  }
+  function setValue(path, value) {
+    const keys = path.split('.');
+    let target = state.active;
+    for (const key of keys.slice(0, -1)) {
+      if (target[key] === null || target[key] === undefined) throw new Error('That field is not available');
+      target = target[key];
+    }
+    target[keys[keys.length - 1]] = value;
+  }
+  function setMessage(text) { $('#action-message').textContent = text; }
+  function applyTheme() {
+    if (state.theme === 'system') delete document.documentElement.dataset.theme;
+    else document.documentElement.dataset.theme = state.theme;
+  }
+
+  function samplingBase() {
+    const s = M.defaultScenario();
+    Object.assign(s.optics, {
+      mode: 'distance', sensorWidthMm: 6.4, sensorHeightMm: 4.8,
+      pixelsX: 2000, pixelsY: 1500, objectWidthMm: 200, objectHeightMm: 150,
+      marginPercent: 0, focalLengthMm: 8
+    });
+    s.name = 'Teaching example: 0.1 mm/pixel conveyor';
+    return s;
+  }
+  function apertureBase() {
+    const s = samplingBase();
+    const optics = M.solveOptics(s.optics);
+    const focus = M.assessFocus(s.focus, optics);
+    s.name = 'Teaching example: aperture and light';
+    s.lighting = {
+      intensityRatio: 1,
+      reference: {
+        integrationUs: 100, effectiveFNumber: focus.effectiveFNumber,
+        illuminationLux: null, confirmedComparable: true,
+        note: 'Teaching example: representative usable exposure; not a measurement.'
+      }
+    };
+    return s;
+  }
+  const LESSONS = {
+    speed: {
+      title: 'Speed and exposure',
+      base: () => {
+        const s = samplingBase();
+        s.name = 'Teaching example: speed and exposure';
+        Object.assign(s.motion, { speedMmS: 1000, exposureUs: 100, illumination: 'continuous', shutter: 'global' });
+        return s;
+      },
+      comparison: () => {
+        const s = LESSONS.speed.base();
+        s.motion.exposureUs = 200;
+        s.name = 'Teaching comparison: 200 µs exposure';
+        return s;
+      }
+    },
+    coverage: {
+      title: 'Coverage and sampling',
+      base: samplingBase,
+      comparison: () => {
+        const s = samplingBase();
+        s.name = 'Teaching comparison: double field at fixed resolution';
+        Object.assign(s.optics, { objectWidthMm: 400, objectHeightMm: 300 });
+        return s;
+      }
+    },
+    aperture: {
+      title: 'Aperture and light',
+      base: apertureBase,
+      comparison: () => {
+        const s = apertureBase();
+        s.name = 'Teaching comparison: f/8 at unchanged exposure';
+        s.focus.fNumber = 8;
+        return s;
+      }
+    },
+    strobe: {
+      title: 'Continuous and strobe',
+      base: () => {
+        const s = samplingBase();
+        s.name = 'Teaching example: continuous and strobe';
+        Object.assign(s.motion, {
+          speedMmS: 1000, exposureUs: 1000, illumination: 'strobe',
+          pulseUs: 20, pulseDelayUs: 100, ambientSignalPercent: 0, shutter: 'global'
+        });
+        return s;
+      },
+      comparison: () => {
+        const s = LESSONS.strobe.base();
+        s.name = 'Teaching comparison: 10% collected ambient signal';
+        s.motion.ambientSignalPercent = 10;
+        return s;
+      }
+    }
+  };
+  function addFields(container, specs) {
+    const grid = document.createElement('div');
+    grid.className = 'fields';
+    for (const spec of specs) grid.append(buildField(spec));
+    container.append(grid);
+    return grid;
+  }
+  function buildGroup(container, main, advanced, summaryText) {
+    addFields(container, main);
+    if (advanced && advanced.length) {
+      const details = document.createElement('details');
+      const summary = document.createElement('summary');
+      summary.textContent = summaryText;
+      details.append(summary);
+      addFields(details, advanced);
+      container.append(details);
+    }
+  }
+  function optionField(spec, id) {
+    const select = document.createElement('select');
+    select.id = id;
+    select.dataset.path = spec.path;
+    for (const choice of spec.options) {
+      const option = document.createElement('option');
+      option.value = choice.value;
+      option.textContent = choice.label;
+      select.append(option);
+    }
+    select.value = getPath(spec.path);
+    return select;
+  }
+  function buildField(spec) {
+    DESC.set(spec.path, spec);
+    const wrap = document.createElement('div');
+    wrap.className = 'field';
+    wrap.dataset.field = spec.path;
+    const id = 'field-' + spec.path.replace(/[^a-z0-9]+/gi, '-');
+    const label = document.createElement('label');
+    label.htmlFor = id;
+    label.textContent = spec.label;
+    wrap.append(label);
+    if (spec.type === 'select') {
+      wrap.append(optionField(spec, id));
+    } else if (spec.type === 'checkbox') {
+      const row = document.createElement('div');
+      row.className = 'input-row';
+      const input = document.createElement('input');
+      input.id = id;
+      input.type = 'checkbox';
+      input.dataset.path = spec.path;
+      input.checked = getPath(spec.path) === true;
+      row.append(input);
+      wrap.append(row);
+    } else if (spec.type === 'textarea') {
+      const input = document.createElement('textarea');
+      input.id = id;
+      input.dataset.path = spec.path;
+      input.maxLength = spec.maxLength || 1000;
+      const current = getPath(spec.path);
+      input.value = current === null || current === undefined ? '' : String(current);
+      wrap.append(input);
+    } else {
+      const row = document.createElement('div');
+      row.className = 'input-row';
+      const input = document.createElement('input');
+      input.id = id;
+      input.type = 'number';
+      input.step = spec.integer ? '1' : 'any';
+      input.dataset.path = spec.path;
+      input.dataset.factor = String(spec.factor || 1);
+      const current = getPath(spec.path);
+      input.value = current === null || current === undefined ? '' : String(current / (spec.factor || 1));
+      row.append(input);
+      if (spec.unit) {
+        const unit = document.createElement('span');
+        unit.className = 'unit';
+        unit.textContent = spec.unit;
+        row.append(unit);
+      }
+      wrap.append(row);
+      if (spec.slider) {
+        const range = document.createElement('input');
+        range.type = 'range';
+        range.className = 'slider';
+        range.dataset.slider = spec.path;
+        range.setAttribute('aria-label', spec.label + ' slider');
+        wrap.append(range);
+        setupSlider(range, spec, current);
+      }
+    }
+    if (spec.help) {
+      const help = document.createElement('p');
+      help.className = 'help';
+      help.textContent = spec.help;
+      wrap.append(help);
+    }
+    return wrap;
+  }
+  function setupSlider(range, spec, current) {
+    const bounds = spec.slider;
+    let low = bounds[0];
+    let high = bounds[1];
+    if (spec.log) {
+      low = Math.log10(low);
+      high = Math.log10(high);
+      if (Number.isFinite(current) && current > 0) {
+        const point = Math.log10(current);
+        if (point < low) low = Math.floor(point);
+        if (point > high) high = Math.ceil(point);
+      }
+      range.step = '0.001';
+    } else {
+      if (Number.isFinite(current)) {
+        if (current < low) low = current;
+        if (current > high) high = current;
+      }
+      range.step = 'any';
+    }
+    range.min = String(low);
+    range.max = String(high);
+    if (Number.isFinite(current) && current > 0) {
+      range.value = String(spec.log ? Math.log10(current) : current);
+    } else {
+      range.value = String((Number(range.min) + Number(range.max)) / 2);
+    }
+  }
+  function syncSlider(path, value) {
+    for (const wrap of document.querySelectorAll('[data-field]')) {
+      if (wrap.dataset.field !== path) continue;
+      const range = wrap.querySelector('input[type="range"]');
+      if (!range) return;
+      setupSlider(range, DESC.get(path), value);
+      return;
+    }
+  }
+  function sensorField() {
+    const wrap = document.createElement('div');
+    wrap.className = 'field';
+    const label = document.createElement('label');
+    label.htmlFor = 'sensor-preset';
+    label.textContent = 'Sensor dimensions preset';
+    const select = document.createElement('select');
+    select.id = 'sensor-preset';
+    select.dataset.ui = 'sensor-preset';
+    const custom = document.createElement('option');
+    custom.value = 'custom';
+    custom.textContent = 'Custom dimensions';
+    select.append(custom);
+    for (const preset of SENSOR_PRESETS) {
+      const option = document.createElement('option');
+      option.value = preset.id;
+      option.textContent = preset.label;
+      select.append(option);
+    }
+    select.value = state.sensorPreset;
+    wrap.append(label, select);
+    const help = document.createElement('p');
+    help.className = 'help';
+    help.textContent = 'Presets set dimensions only, never image resolution. Optical inch labels are approximate. Editing either dimension selects Custom.';
+    wrap.append(help);
+    return wrap;
+  }
+  function speedUnitField() {
+    const wrap = document.createElement('div');
+    wrap.className = 'field';
+    const label = document.createElement('label');
+    label.htmlFor = 'speed-unit';
+    label.textContent = 'Speed unit';
+    const select = document.createElement('select');
+    select.id = 'speed-unit';
+    select.dataset.ui = 'speed-unit';
+    for (const unit of Object.keys(SPEED_UNITS)) {
+      const option = document.createElement('option');
+      option.value = unit;
+      option.textContent = unit;
+      select.append(option);
+    }
+    select.value = state.speedUnit;
+    wrap.append(label, select);
+    return wrap;
+  }
+  function buildReference(container) {
+    const details = document.createElement('details');
+    const summary = document.createElement('summary');
+    summary.textContent = 'Lighting reference (optional measured or teaching setup)';
+    details.append(summary);
+    const note = document.createElement('p');
+    note.className = 'help';
+    note.textContent = 'A reference must come from a known usable setup on the same material and lighting geometry. A teaching reference must say so and does not imply measurement.';
+    details.append(note);
+    const enableWrap = document.createElement('div');
+    enableWrap.className = 'field';
+    const enableLabel = document.createElement('label');
+    enableLabel.htmlFor = 'enable-reference';
+    enableLabel.textContent = 'Enable a lighting reference';
+    const enable = document.createElement('input');
+    enable.id = 'enable-reference';
+    enable.type = 'checkbox';
+    enable.dataset.ui = 'enable-reference';
+    enable.checked = state.active.lighting.reference !== null;
+    enableWrap.append(enableLabel, enable);
+    details.append(enableWrap);
+    const reference = state.active.lighting.reference;
+    if (reference !== null) {
+      addFields(details, [
+        { path: 'lighting.reference.integrationUs', label: 'Reference integration time', unit: 'µs', help: 'Exposure for continuous light or pulse duration for an isolated strobe contribution.' },
+        { path: 'lighting.reference.effectiveFNumber', label: 'Reference effective f-number', unit: 'N_eff' },
+        { path: 'lighting.reference.illuminationLux', label: 'Measured reference illumination (optional)', unit: 'lux', help: 'Leave empty when unknown. Lux scales only under unchanged spectrum and geometry.' },
+        { path: 'lighting.reference.confirmedComparable', label: 'I confirm this reference was a known usable setup', type: 'checkbox' },
+        { path: 'lighting.reference.note', label: 'Reference note', type: 'textarea', maxLength: 1000 }
+      ]);
+      const actions = document.createElement('div');
+      actions.className = 'actions';
+      const use = document.createElement('button');
+      use.type = 'button';
+      use.dataset.action = 'use-reference';
+      use.textContent = 'Use current integration time and aperture';
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.dataset.action = 'remove-reference';
+      remove.textContent = 'Remove reference';
+      actions.append(use, remove);
+      details.append(actions);
+      const confidence = document.createElement('p');
+      confidence.className = 'help';
+      confidence.textContent = 'Changing reference integration time or effective f-number clears the confirmation. Relative status stays unassessed until you confirm again.';
+      details.append(confidence);
+    }
+    container.append(details);
+  }
+  function renderControls() {
+    DESC = new Map();
+    $('#scenario-name').value = state.active.name;
+    $('#theme-select').value = state.theme;
+
+    const optics = $('[data-controls="optics"]');
+    optics.replaceChildren();
+    optics.append(sensorField());
+    addFields(optics, [
+      { path: 'optics.mode', label: 'Solve mode', type: 'select', options: [
+        { value: 'distance', label: 'Solve object distance for a focal length' },
+        { value: 'focal', label: 'Solve focal length for an object distance' },
+        { value: 'coverage', label: 'Evaluate fixed focal length and distance' }
+      ] },
+      { path: 'optics.sensorWidthMm', label: 'Sensor width', unit: 'mm' },
+      { path: 'optics.sensorHeightMm', label: 'Sensor height', unit: 'mm' },
+      { path: 'optics.pixelsX', label: 'Image width', unit: 'px', integer: true },
+      { path: 'optics.pixelsY', label: 'Image height', unit: 'px', integer: true },
+      { path: 'optics.objectWidthMm', label: 'Object width', unit: 'mm' },
+      { path: 'optics.objectHeightMm', label: 'Object height', unit: 'mm' },
+      { path: 'optics.marginPercent', label: 'Total framing margin', unit: '%', slider: [0, 100], help: 'Default 20% is an editable assumption. The margin is split around the object.' },
+      { path: 'optics.focalLengthMm', label: 'Focal length', unit: 'mm', slider: [1, 200], help: 'Used by distance and coverage modes. Retained, not overwritten, when another mode is active.' },
+      { path: 'optics.objectDistanceMm', label: 'Principal-plane object distance', unit: 'mm', slider: [20, 2000], help: 'Used by focal and coverage modes. This is not front-of-lens mechanical clearance.' }
+    ]);
+    const opticsDetails = document.createElement('details');
+    const opticsSummary = document.createElement('summary');
+    opticsSummary.textContent = 'Optical-format and principal-plane notes';
+    opticsDetails.append(opticsSummary);
+    const opticsNote = document.createElement('p');
+    opticsNote.className = 'help';
+    opticsNote.textContent = 'Sensor inch formats are approximate labels. The thin-lens model does not locate a commercial lens principal plane, so the calculated distance is not a mechanical working distance.';
+    opticsDetails.append(opticsNote);
+    optics.append(opticsDetails);
+
+    const inspection = $('[data-controls="inspection"]');
+    inspection.replaceChildren();
+    addFields(inspection, [
+      { path: 'inspection.featureMm', label: 'Smallest feature', unit: 'mm', help: 'Enter the smallest dimension that must be resolved, not the part size.' },
+      { path: 'inspection.pixelsPerFeature', label: 'Pixels across smallest feature', unit: 'px', help: 'Default five is an editable sampling assumption.' }
+    ]);
+
+    const motion = $('[data-controls="motion"]');
+    motion.replaceChildren();
+    motion.append(speedUnitField());
+    addFields(motion, [
+      { path: 'motion.speedMmS', label: 'Conveyor speed', unit: state.speedUnit, factor: SPEED_UNITS[state.speedUnit], slider: [0, 5000], help: 'The slider range is in mm/s. Typed values outside the slider range stay exact; the slider expands.' },
+      { path: 'motion.directionDeg', label: 'Image-plane direction', unit: '°', help: '0° is rightward and 90° is downward in the image.' },
+      { path: 'motion.exposureUs', label: 'Exposure time', unit: 'µs', slider: [1, 100000], log: true, help: 'The slider uses a logarithmic convenience range, not a model restriction.' },
+      { path: 'motion.blurLimitPx', label: 'Motion-blur limit', unit: 'px', help: 'Default one pixel is an editable limit.' },
+      { path: 'motion.shutter', label: 'Shutter', type: 'select', options: [
+        { value: 'global', label: 'Global shutter' }, { value: 'rolling', label: 'Rolling shutter' }
+      ] },
+      { path: 'motion.illumination', label: 'Illumination mode', type: 'select', options: [
+        { value: 'continuous', label: 'Continuous illumination' }, { value: 'strobe', label: 'Synchronized strobe' }
+      ] }
+    ]);
+    buildGroup(motion, [], [
+      { path: 'motion.rowTimeUs', label: 'Row time (optional)', unit: 'µs', help: 'Rolling shutter only. Unknown stays null, never zero.', condition: s => s.motion.shutter === 'rolling' },
+      { path: 'motion.minExposureUs', label: 'Camera minimum exposure (optional)', unit: 'µs' },
+      { path: 'motion.pulseUs', label: 'Strobe pulse duration', unit: 'µs', condition: s => s.motion.illumination === 'strobe' },
+      { path: 'motion.pulseDelayUs', label: 'Pulse delay from first-row start (optional)', unit: 'µs', condition: s => s.motion.illumination === 'strobe' },
+      { path: 'motion.ambientSignalPercent', label: 'Collected ambient signal (optional)', unit: '%', condition: s => s.motion.illumination === 'strobe', help: 'Fraction of collected light from continuous illumination, not a lamp power setting.' }
+    ], 'Advanced shutter and strobe timing');
+
+    const capture = $('[data-controls="capture"]');
+    capture.replaceChildren();
+    addFields(capture, [
+      { path: 'capture.mode', label: 'Capture sizing', type: 'select', options: [
+        { value: 'parts', label: 'Parts at a pitch' }, { value: 'overlap', label: 'Image overlap along travel' }
+      ] },
+      { path: 'capture.pitchMm', label: 'Part pitch', unit: 'mm', condition: s => s.capture.mode === 'parts' },
+      { path: 'capture.imagesPerPart', label: 'Images per part', unit: 'images', integer: true, condition: s => s.capture.mode === 'parts' },
+      { path: 'capture.axis', label: 'Conveyor travel in image', type: 'select', condition: s => s.capture.mode === 'overlap', options: [
+        { value: 'x', label: 'Horizontal (x)' }, { value: 'y', label: 'Vertical (y)' }
+      ] },
+      { path: 'capture.overlapPercent', label: 'Image overlap', unit: '%', condition: s => s.capture.mode === 'overlap' }
+    ]);
+    buildGroup(capture, [], [
+      { path: 'capture.maxFps', label: 'Camera frame-rate limit (optional)', unit: 'fps', help: 'Leave empty to keep capture status unassessed.' }
+    ], 'Optional camera frame-rate limit');
+
+    const lighting = $('[data-controls="lighting"]');
+    lighting.replaceChildren();
+    addFields(lighting, [
+      { path: 'lighting.intensityRatio', label: 'Light intensity multiplier', unit: '×', slider: [0.01, 100], log: true, help: 'Relative to the current illumination setting. The slider is logarithmic and does not limit typed values.' }
+    ]);
+    buildReference(lighting);
+
+    const focus = $('[data-controls="focus"]');
+    focus.replaceChildren();
+    addFields(focus, [
+      { path: 'focus.fNumber', label: 'F-number', unit: 'f/', slider: [1.2, 32], log: true },
+      { path: 'focus.heightVariationMm', label: 'Total object-height variation', unit: 'mm', help: 'A total range centered on the focused object plane.' }
+    ]);
+    buildGroup(focus, [], [
+      { path: 'focus.defocusLimitPx', label: 'Permissible defocus diameter', unit: 'px' },
+      { path: 'focus.wavelengthNm', label: 'Wavelength', unit: 'nm', help: 'Default 550 nm is an editable assumption. The Airy diameter is indicative, not a detection threshold.' }
+    ], 'Advanced focus tolerances');
+
+    updateControlStates();
+  }
+
+  function updateControlStates() {
+    for (const wrap of document.querySelectorAll('[data-field]')) {
+      const spec = DESC.get(wrap.dataset.field);
+      if (!spec) continue;
+      wrap.hidden = Boolean(spec.condition && !spec.condition(state.active));
+    }
+    for (const details of document.querySelectorAll('details')) {
+      if (details.querySelector('[data-field]')) {
+        const visible = Array.from(details.querySelectorAll('[data-field]')).some(wrap => !wrap.hidden);
+        details.hidden = !visible && !details.querySelector('button');
+      }
+    }
+  }
+
+  function resetReferenceConfirmation(path) {
+    if (path !== 'lighting.reference.integrationUs' && path !== 'lighting.reference.effectiveFNumber') return;
+    if (state.active.lighting.reference === null) return;
+    state.active.lighting.reference.confirmedComparable = false;
+    const checkbox = document.querySelector('[data-path="lighting.reference.confirmedComparable"]');
+    if (checkbox) checkbox.checked = false;
+  }
+
+  function onInput(event) {
+    const input = event.target;
+    if (input.matches('input[type="number"][data-path]')) {
+      const path = input.dataset.path;
+      const factor = Number(input.dataset.factor || 1);
+      const value = input.value.trim() === '' ? null : input.valueAsNumber * factor;
+      try { setValue(path, value); } catch (error) { setMessage(error.message); }
+      if (path === 'optics.sensorWidthMm' || path === 'optics.sensorHeightMm') {
+        state.sensorPreset = 'custom';
+        const preset = document.querySelector('[data-ui="sensor-preset"]');
+        if (preset) preset.value = 'custom';
+      }
+      resetReferenceConfirmation(path);
+      syncSlider(path, value);
+      render();
+      return;
+    }
+    if (input.matches('input[type="range"][data-slider]')) {
+      const path = input.dataset.slider;
+      const spec = DESC.get(path);
+      const raw = spec.log ? 10 ** Number(input.value) : Number(input.value);
+      try { setValue(path, raw); } catch (error) { setMessage(error.message); }
+      const wrap = input.closest('[data-field]');
+      const number = wrap ? wrap.querySelector('input[type="number"]') : null;
+      if (number) number.value = String(raw / (spec.factor || 1));
+      resetReferenceConfirmation(path);
+      render();
+      return;
+    }
+    if (input.matches('input[type="text"][data-path]')) {
+      try { setValue(input.dataset.path, input.value); } catch (error) { setMessage(error.message); }
+      render();
+      return;
+    }
+    if (input.matches('textarea[data-path]')) {
+      try { setValue(input.dataset.path, input.value); } catch (error) { setMessage(error.message); }
+      render();
+    }
+  }
+
+  function onChange(event) {
+    const input = event.target;
+    if (input.id === 'theme-select') {
+      state.theme = input.value;
+      applyTheme();
+      return;
+    }
+    if (input.dataset.ui === 'sensor-preset') {
+      const preset = SENSOR_PRESETS.find(item => item.id === input.value);
+      state.sensorPreset = input.value;
+      if (preset) {
+        state.active.optics.sensorWidthMm = preset.w;
+        state.active.optics.sensorHeightMm = preset.h;
+      }
+      renderControls();
+      render();
+      return;
+    }
+    if (input.dataset.ui === 'speed-unit') {
+      state.speedUnit = input.value;
+      renderControls();
+      render();
+      return;
+    }
+    if (input.dataset.ui === 'enable-reference') {
+      if (input.checked) {
+        const result = M.evaluate(state.active);
+        const integration = state.active.motion.illumination === 'strobe'
+          ? state.active.motion.pulseUs : state.active.motion.exposureUs;
+        state.active.lighting.reference = {
+          integrationUs: Number.isFinite(integration) && integration > 0 ? integration : 100,
+          effectiveFNumber: result.focus && Number.isFinite(result.focus.effectiveFNumber)
+            ? result.focus.effectiveFNumber : 4,
+          illuminationLux: null, confirmedComparable: false, note: ''
+        };
+        setMessage('Lighting reference created. Confirm a known usable setup before relying on the signal check.');
+      } else {
+        state.active.lighting.reference = null;
+        setMessage('Lighting reference removed.');
+      }
+      renderControls();
+      render();
+      return;
+    }
+    if (input.matches('select[data-path]')) {
+      try { setValue(input.dataset.path, input.value); } catch (error) { setMessage(error.message); }
+      render();
+      return;
+    }
+    if (input.matches('input[type="checkbox"][data-path]')) {
+      try { setValue(input.dataset.path, input.checked); } catch (error) { setMessage(error.message); }
+      render();
+    }
+  }
+  function appendCheck(container, label, status, explanation) {
+    const item = document.createElement('p');
+    item.dataset.status = status;
+    const wording = { meets: 'Meets entered limit', exceeds: 'Exceeds entered limit', unassessed: 'Not assessed' };
+    item.textContent = label + ': ' + wording[status] + '. ' + explanation;
+    container.append(item);
+  }
+  function summaryRows(r) {
+    const o = r.optics, d = r.detail, f = r.focus, m = r.motion, c = r.capture, l = r.lighting;
+    const strobe = state.active.motion.illumination === 'strobe';
+    const focusRange = !f ? 'Not assessed'
+      : f.farUnbounded ? formatQuantity(f.nearMm, 'mm') + ' to no finite far limit'
+      : formatQuantity(f.nearMm, 'mm') + ' to ' + formatQuantity(f.farMm, 'mm');
+    const duty = !strobe ? 'Not applicable (continuous illumination)'
+      : c && c.strobeDutyPercent !== null ? formatQuantity(c.strobeDutyPercent, '%')
+      : 'Not assessed (required capture rate unavailable)';
+    return [
+      ['Field of view', pair(o && o.fovWidthMm, o && o.fovHeightMm, 'mm')],
+      ['Object distance (principal plane)', formatQuantity(o && o.objectDistanceMm, 'mm')],
+      ['Focal length', formatQuantity(o && o.focalLengthMm, 'mm')],
+      ['Image distance', formatQuantity(o && o.imageDistanceMm, 'mm')],
+      ['Magnification', formatQuantity(o && o.magnification, '×')],
+      ['Actual sampling', pair(o && o.mmPerPixelX, o && o.mmPerPixelY, 'mm/px')],
+      ['Pixels across feature', pair(d && d.featurePixelsX, d && d.featurePixelsY, 'px')],
+      ['Required image resolution', d ? formatNumber(d.requiredPixelsX) + ' × ' + formatNumber(d.requiredPixelsY) + ' px' : 'Not assessed'],
+      ['Exposure displacement', formatQuantity(m && m.exposureBlurPx, 'px')],
+      ['Pulse displacement', formatQuantity(m && m.pulseBlurPx, 'px')],
+      ['Assessed motion blur', formatQuantity(m && m.assessedBlurPx, 'px')],
+      [strobe ? 'Maximum pulse duration at blur limit' : 'Maximum exposure at blur limit',
+        m ? formatQuantity(m.maxWindowUs, 'µs', m.windowUnbounded) : 'Not assessed'],
+      [strobe ? 'Maximum conveyor speed (pulse only)' : 'Maximum conveyor speed (continuous exposure)',
+        m ? formatQuantity(m.maxSpeedMmS / SPEED_UNITS[state.speedUnit], state.speedUnit) : 'Not assessed'],
+      ['Required strobe duty cycle', duty],
+      ['Required capture rate', c ? (c.requiredFps === null ? 'Not assessed' : formatQuantity(c.requiredFps, 'fps')) : 'Not assessed'],
+      ['Relative light demand', l ? formatQuantity(l.requiredIntensityRatio, '× reference') : 'Not assessed'],
+      ['Geometric focus range', focusRange],
+      ['Diffraction diameter (Airy)', formatQuantity(f && f.airyDiameterUm, 'µm')],
+      ['Reference illumination', formatQuantity(l && l.requiredIlluminationLux, 'lux')]
+    ];
+  }
+  function inputRows() {
+    const s = state.active;
+    const value = (v, unit) => v === null || v === undefined || v === ''
+      ? 'Unknown (not entered)'
+      : typeof v === 'number' ? formatQuantity(v, unit) : String(v);
+    const labels = {
+      optics: { distance: 'Solve object distance for a focal length', focal: 'Solve focal length for an object distance', coverage: 'Evaluate fixed focal length and distance' },
+      shutter: { global: 'Global shutter', rolling: 'Rolling shutter' },
+      illumination: { continuous: 'Continuous illumination', strobe: 'Synchronized strobe' },
+      capture: { parts: 'Parts at a pitch', overlap: 'Image overlap along travel' },
+      axis: { x: 'Horizontal (x)', y: 'Vertical (y)' }
+    };
+    const rows = [
+      ['Solve mode', labels.optics[s.optics.mode] || s.optics.mode],
+      ['Sensor width', value(s.optics.sensorWidthMm, 'mm')],
+      ['Sensor height', value(s.optics.sensorHeightMm, 'mm')],
+      ['Image width', value(s.optics.pixelsX, 'px')],
+      ['Image height', value(s.optics.pixelsY, 'px')],
+      ['Object width', value(s.optics.objectWidthMm, 'mm')],
+      ['Object height', value(s.optics.objectHeightMm, 'mm')],
+      ['Total framing margin', value(s.optics.marginPercent, '%')],
+      ['Focal length', value(s.optics.focalLengthMm, 'mm')],
+      ['Principal-plane object distance', value(s.optics.objectDistanceMm, 'mm')],
+      ['Smallest feature', value(s.inspection.featureMm, 'mm')],
+      ['Pixels across smallest feature', value(s.inspection.pixelsPerFeature, 'px')],
+      ['Conveyor speed', value(s.motion.speedMmS / SPEED_UNITS[state.speedUnit], state.speedUnit)],
+      ['Image-plane direction', value(s.motion.directionDeg, '°')],
+      ['Exposure time', value(s.motion.exposureUs, 'µs')],
+      ['Motion-blur limit', value(s.motion.blurLimitPx, 'px')],
+      ['Shutter', labels.shutter[s.motion.shutter] || s.motion.shutter],
+      ['Illumination mode', labels.illumination[s.motion.illumination] || s.motion.illumination],
+      ['Row time (optional)', value(s.motion.rowTimeUs, 'µs')],
+      ['Camera minimum exposure (optional)', value(s.motion.minExposureUs, 'µs')],
+      ['Strobe pulse duration', value(s.motion.pulseUs, 'µs')],
+      ['Pulse delay from first-row start (optional)', value(s.motion.pulseDelayUs, 'µs')],
+      ['Collected ambient signal (optional)', value(s.motion.ambientSignalPercent, '%')],
+      ['Capture sizing', labels.capture[s.capture.mode] || s.capture.mode],
+      ['Part pitch', value(s.capture.pitchMm, 'mm')],
+      ['Images per part', value(s.capture.imagesPerPart, 'images')],
+      ['Conveyor travel in image', labels.axis[s.capture.axis] || s.capture.axis],
+      ['Image overlap', value(s.capture.overlapPercent, '%')],
+      ['Camera frame-rate limit (optional)', value(s.capture.maxFps, 'fps')],
+      ['Light intensity multiplier', value(s.lighting.intensityRatio, '×')],
+      ['F-number', s.focus.fNumber === null || s.focus.fNumber === undefined ? 'Unknown (not entered)' : 'f/' + formatNumber(s.focus.fNumber)],
+      ['Total object-height variation', value(s.focus.heightVariationMm, 'mm')],
+      ['Permissible defocus diameter', value(s.focus.defocusLimitPx, 'px')],
+      ['Wavelength', value(s.focus.wavelengthNm, 'nm')]
+    ];
+    const reference = s.lighting.reference;
+    if (reference === null) {
+      rows.push(['Lighting reference', 'None (relative signal not assessed)']);
+    } else {
+      rows.push(
+        ['Reference integration time', value(reference.integrationUs, 'µs')],
+        ['Reference effective f-number', value(reference.effectiveFNumber, 'N_eff')],
+        ['Reference illumination (optional)', reference.illuminationLux === null ? 'Unknown (not entered)' : value(reference.illuminationLux, 'lux')],
+        ['Reference confirmed comparable', reference.confirmedComparable ? 'Yes' : 'No'],
+        ['Reference note', reference.note ? String(reference.note) : '(empty)']
+      );
+    }
+    return rows;
+  }
+  function checksFor(r, scenario) {
+    const checks = [];
+    if (!r.optics) {
+      checks.push({ label: 'Object framing', status: 'unassessed', explanation: 'Coverage inputs are invalid. Correct the sensor, object, margin, focal length, or distance.' });
+    } else {
+      const o = r.optics;
+      checks.push({ label: 'Object framing', status: o.coverageStatus,
+        explanation: o.coverageStatus === 'meets'
+          ? 'Field ' + pair(o.fovWidthMm, o.fovHeightMm, 'mm') + ' covers the requested margin ' + pair(o.requiredWidthMm, o.requiredHeightMm, 'mm') + '.'
+          : 'Field ' + pair(o.fovWidthMm, o.fovHeightMm, 'mm') + ' is smaller than the requested margin ' + pair(o.requiredWidthMm, o.requiredHeightMm, 'mm') + '. Change focal length, distance, sensor size, or margin.' });
+    }
+    if (!r.detail) {
+      checks.push({ label: 'Sampling', status: 'unassessed', explanation: 'Enter a positive feature size and pixels per feature.' });
+    } else {
+      checks.push({ label: 'Sampling', status: r.detail.status,
+        explanation: r.detail.status === 'meets'
+          ? 'The feature spans ' + formatNumber(Math.min(r.detail.featurePixelsX, r.detail.featurePixelsY)) + ' pixels on the limiting axis.'
+          : 'The feature spans ' + formatNumber(Math.min(r.detail.featurePixelsX, r.detail.featurePixelsY)) + ' pixels, below the requested ' + formatNumber(scenario.inspection.pixelsPerFeature) + '. Increase resolution, reduce field of view, or lower the assumption.' });
+    }
+    if (!r.motion) {
+      checks.push({ label: 'Motion blur', status: 'unassessed', explanation: 'Correct the speed, exposure, direction, shutter, illumination, or pulse inputs.' });
+      checks.push({ label: 'Camera minimum exposure', status: 'unassessed', explanation: 'Not assessed because the motion inputs are invalid. Enter a camera minimum exposure to compare.' });
+      checks.push({ label: 'Strobe timing', status: 'unassessed', explanation: 'Not assessed because the motion inputs are invalid.' });
+    } else {
+      const m = r.motion;
+      let explanation;
+      if (m.status === 'meets') explanation = 'Assessed displacement is ' + formatQuantity(m.assessedBlurPx, 'px') + '.';
+      else if (m.status === 'exceeds') explanation = 'Assessed displacement is ' + formatQuantity(m.assessedBlurPx, 'px') + ', above the ' + formatQuantity(scenario.motion.blurLimitPx, 'px') + ' limit. Shorten exposure or pulse, reduce speed, or relax the limit.';
+      else explanation = 'Motion blur is not assessed because strobe timing or collected ambient signal is unknown.';
+      checks.push({ label: 'Motion blur', status: m.status, explanation });
+      if (m.minimumExposureStatus === 'unassessed') {
+        checks.push({ label: 'Camera minimum exposure', status: 'unassessed', explanation: 'Enter an optional camera minimum exposure to compare; this check stays open without one.' });
+      } else {
+        checks.push({ label: 'Camera minimum exposure', status: m.minimumExposureStatus,
+          explanation: m.minimumExposureStatus === 'meets' ? 'Exposure is at or above the camera minimum.' : 'Exposure is below the entered camera minimum. Increase exposure or verify the camera limit.' });
+      }
+      if (scenario.motion.illumination !== 'strobe') {
+        checks.push({ label: 'Strobe timing', status: 'unassessed', explanation: 'Continuous illumination is active. Strobe timing applies only to a synchronized pulse.' });
+      } else {
+        let why;
+        if (m.rowSpanUs === null) why = 'Row timing is unknown, so a shared flash window cannot be verified.';
+        else if (m.flashWindowUs <= 0) why = 'Exposure is shorter than the first-to-last-row start span, so there is no common flash window.';
+        else if (scenario.motion.pulseDelayUs === null) why = 'Pulse delay is unknown, so pulse placement cannot be verified.';
+        else if (scenario.motion.pulseUs > m.flashWindowUs) why = 'Pulse duration exceeds the ' + formatQuantity(m.flashWindowUs, 'µs') + ' common flash window.';
+        else if (m.timingStatus === 'exceeds') why = 'The pulse does not fit between the first-to-last row start and the end of exposure. Move the pulse later or extend exposure.';
+        else why = 'The pulse fits the common window from ' + formatQuantity(m.rowSpanUs, 'µs') + ' to ' + formatQuantity(scenario.motion.exposureUs, 'µs') + '.';
+        checks.push({ label: 'Strobe timing', status: m.timingStatus, explanation: why });
+      }
+    }
+    if (!r.capture) {
+      checks.push({ label: 'Capture rate', status: 'unassessed', explanation: 'Correct the capture sizing inputs.' });
+    } else {
+      let explanation;
+      if (r.capture.requiredFps === null) explanation = (r.capture.reason || 'Required capture rate is not assessed') + '.';
+      else if (scenario.capture.maxFps === null) explanation = 'Required acquisition rate is ' + formatQuantity(r.capture.requiredFps, 'fps') + '. Enter a camera frame-rate limit to compare.';
+      else if (r.capture.status === 'meets') explanation = 'Required ' + formatQuantity(r.capture.requiredFps, 'fps') + ' is within the entered ' + formatQuantity(scenario.capture.maxFps, 'fps') + '.';
+      else explanation = 'Required ' + formatQuantity(r.capture.requiredFps, 'fps') + ' exceeds the entered ' + formatQuantity(scenario.capture.maxFps, 'fps') + '. Reduce speed, change pitch or overlap, or use a faster camera.';
+      checks.push({ label: 'Capture rate', status: r.capture.status, explanation });
+    }
+    if (!r.lighting || r.lighting.requiredIntensityRatio === null) {
+      checks.push({ label: 'Reference signal', status: 'unassessed', explanation: 'Enable and confirm a comparable lighting reference to assess relative signal.' });
+    } else {
+      const l = r.lighting;
+      let explanation;
+      if (l.componentOnly) explanation = 'Only the strobe component is compared; collected ambient signal is nonzero or unknown. This status intentionally stays unassessed.';
+      else if (l.status === 'meets') explanation = 'Available signal is ' + formatQuantity(l.signalRatio, '× required') + '.';
+      else explanation = 'Below reference signal. Available signal is ' + formatQuantity(l.signalRatio, '× required') + '. Raise the intensity multiplier, integration time, or aperture, then re-confirm the reference.';
+      checks.push({ label: 'Reference signal', status: l.status, explanation });
+    }
+    if (!r.focus) {
+      checks.push({ label: 'Height coverage', status: 'unassessed', explanation: 'Correct the focus and aperture inputs.' });
+    } else {
+      const f = r.focus;
+      checks.push({ label: 'Height coverage', status: f.heightStatus,
+        explanation: f.heightStatus === 'meets'
+          ? 'The centered height range lies inside the geometric focus range.'
+          : 'The centered height range extends outside ' + formatQuantity(f.nearMm, 'mm') + ' to ' + (f.farUnbounded ? 'no finite far limit' : formatQuantity(f.farMm, 'mm')) + '. Reduce height variation, stop down, or refocus.' });
+    }
+    return checks;
+  }
+  function groupLabel(group) {
+    return { optics: 'Coverage', detail: 'Sampling', focus: 'Focus', motion: 'Motion', capture: 'Capture', lighting: 'Lighting' }[group] || group;
+  }
+  function renderResults(result) {
+    const container = $('#results');
+    container.replaceChildren();
+    const name = document.createElement('p');
+    name.className = 'status-line';
+    name.textContent = state.active.name || 'Untitled scenario';
+    container.append(name);
+
+    const table = document.createElement('table');
+    table.className = 'results-table';
+    const caption = document.createElement('caption');
+    caption.textContent = 'Derived requirements and scale';
+    table.append(caption);
+    const tbody = document.createElement('tbody');
+    for (const [label, value] of summaryRows(result)) {
+      const tr = document.createElement('tr');
+      const th = document.createElement('th');
+      th.scope = 'row';
+      th.textContent = label;
+      const td = document.createElement('td');
+      td.textContent = value;
+      tr.append(th, td);
+      tbody.append(tr);
+    }
+    table.append(tbody);
+    container.append(table);
+    if (state.active.motion.illumination === 'strobe') {
+      const strobeNote = document.createElement('p');
+      strobeNote.className = 'help';
+      strobeNote.textContent = 'Strobe values are requirements: the duty cycle does not validate controller or lamp overdrive, and the maximum conveyor speed is pulse-only.';
+      container.append(strobeNote);
+    }
+
+    const heading = document.createElement('h3');
+    heading.textContent = 'Checks';
+    container.append(heading);
+    const checklist = document.createElement('div');
+    checklist.className = 'checklist';
+    for (const check of checksFor(result, state.active)) appendCheck(checklist, check.label, check.status, check.explanation);
+    container.append(checklist);
+
+    if (result.errors.length) {
+      const box = document.createElement('div');
+      box.className = 'errors';
+      const title = document.createElement('h3');
+      title.textContent = 'Inputs needing correction';
+      box.append(title);
+      for (const error of result.errors) {
+        const p = document.createElement('p');
+        p.textContent = groupLabel(error.group) + ': ' + error.message;
+        box.append(p);
+      }
+      container.append(box);
+    }
+  }
+  function flattenInputs(value, prefix, output) {
+    const out = output || {};
+    const path = prefix || '';
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      for (const key of Object.keys(value)) flattenInputs(value[key], path ? path + '.' + key : key, out);
+    } else {
+      out[path] = value;
+    }
+    return out;
+  }
+  function inputValueText(value) {
+    if (value === null || value === undefined) return 'unknown';
+    if (typeof value === 'number') return formatNumber(value);
+    return String(value);
+  }
+  function changedInputs(before, after) {
+    const a = flattenInputs(before);
+    const b = flattenInputs(after);
+    const changes = [];
+    const keys = Array.from(new Set([...Object.keys(a), ...Object.keys(b)])).sort();
+    const hasDescendant = (source, key) => Object.keys(source).some(candidate => candidate.startsWith(key + '.'));
+    const referenceBefore = a['lighting.reference.integrationUs'] !== undefined;
+    const referenceAfter = b['lighting.reference.integrationUs'] !== undefined;
+    if (referenceBefore !== referenceAfter) {
+      changes.push('Lighting reference: ' + (referenceAfter ? 'added' : 'removed'));
+    }
+    for (const key of keys) {
+      const expanded = hasDescendant(a, key) || hasDescendant(b, key);
+      if (expanded && (!(key in a) || !(key in b))) continue;
+      if (!(key in a) && hasDescendant(b, key)) continue;
+      if (!(key in b) && hasDescendant(a, key)) continue;
+      if (JSON.stringify(a[key]) !== JSON.stringify(b[key])) {
+        changes.push(key + ': ' + (key in a ? inputValueText(a[key]) : 'not present') +
+          ' → ' + (key in b ? inputValueText(b[key]) : 'not present'));
+      }
+    }
+    return changes;
+  }
+  function metricList(r, scenario) {
+    const strobe = scenario && scenario.motion && scenario.motion.illumination === 'strobe';
+    return [
+      { label: 'Field of view width', unit: 'mm', value: r.optics && r.optics.fovWidthMm },
+      { label: 'Field of view height', unit: 'mm', value: r.optics && r.optics.fovHeightMm },
+      { label: 'Focal length', unit: 'mm', value: r.optics && r.optics.focalLengthMm },
+      { label: 'Object distance', unit: 'mm', value: r.optics && r.optics.objectDistanceMm },
+      { label: 'Sampling X', unit: 'mm/px', value: r.optics && r.optics.mmPerPixelX },
+      { label: 'Sampling Y', unit: 'mm/px', value: r.optics && r.optics.mmPerPixelY },
+      { label: 'Pixels per feature X', unit: 'px', value: r.detail && r.detail.featurePixelsX },
+      { label: 'Pixels per feature Y', unit: 'px', value: r.detail && r.detail.featurePixelsY },
+      { label: 'Required pixels X', unit: 'px', value: r.detail && r.detail.requiredPixelsX },
+      { label: 'Required pixels Y', unit: 'px', value: r.detail && r.detail.requiredPixelsY },
+      { label: 'Exposure displacement', unit: 'px', value: r.motion && r.motion.exposureBlurPx },
+      { label: 'Pulse displacement', unit: 'px', value: r.motion && r.motion.pulseBlurPx },
+      { label: 'Assessed motion blur', unit: 'px', value: r.motion && r.motion.assessedBlurPx },
+      { label: strobe ? 'Maximum pulse duration at blur limit' : 'Maximum exposure at blur limit', unit: 'µs', value: r.motion && r.motion.windowUnbounded ? null : r.motion && r.motion.maxWindowUs },
+      { label: strobe ? 'Maximum conveyor speed (pulse only)' : 'Maximum conveyor speed (continuous exposure)', unit: 'mm/s', value: r.motion && r.motion.maxSpeedMmS },
+      { label: 'Required strobe duty cycle', unit: '%', value: r.capture && r.capture.strobeDutyPercent },
+      { label: 'Required capture rate', unit: 'fps', value: r.capture && r.capture.requiredFps },
+      { label: 'Required light multiplier', unit: '×', value: r.lighting && r.lighting.requiredIntensityRatio },
+      { label: 'Near focus limit', unit: 'mm', value: r.focus && r.focus.nearMm },
+      { label: 'Far focus limit', unit: 'mm', value: r.focus && r.focus.farMm },
+      { label: 'Depth of field', unit: 'mm', value: r.focus && r.focus.depthOfFieldMm },
+      { label: 'Airy diameter', unit: 'µm', value: r.focus && r.focus.airyDiameterUm }
+    ];
+  }
+  function buildComparisonTable(snapshotResult, currentResult, snapshotScenario, currentScenario) {
+    const table = document.createElement('table');
+    table.className = 'comparison-metrics';
+    const caption = document.createElement('caption');
+    caption.textContent = 'Snapshot versus current';
+    table.append(caption);
+    const thead = document.createElement('thead');
+    const hr = document.createElement('tr');
+    for (const heading of ['Metric', 'Snapshot', 'Current', 'Difference']) {
+      const th = document.createElement('th');
+      th.scope = 'col';
+      th.textContent = heading;
+      hr.append(th);
+    }
+    thead.append(hr);
+    table.append(thead);
+    const tbody = document.createElement('tbody');
+    const before = metricList(snapshotResult, snapshotScenario);
+    const after = metricList(currentResult, currentScenario);
+    for (let i = 0; i < after.length; i++) {
+      const tr = document.createElement('tr');
+      const name = document.createElement('th');
+      name.scope = 'row';
+      name.textContent = before[i].label === after[i].label
+        ? after[i].label
+        : before[i].label + ' (snapshot) / ' + after[i].label + ' (current)';
+      const a = before[i].value;
+      const b = after[i].value;
+      const av = formatQuantity(a, after[i].unit);
+      const bv = formatQuantity(b, after[i].unit);
+      const diff = Number.isFinite(a) && Number.isFinite(b) ? (b - a) : null;
+      const dv = diff === null ? 'Not assessed' : (diff > 0 ? '+' : '') + formatQuantity(diff, after[i].unit);
+      for (const value of [av, bv, dv]) {
+        const td = document.createElement('td');
+        td.textContent = value;
+        tr.append(td);
+      }
+      tr.insertBefore(name, tr.firstChild);
+      tbody.append(tr);
+    }
+    table.append(tbody);
+    const scroller = document.createElement('div');
+    scroller.className = 'comparison-scroll';
+    scroller.tabIndex = 0;
+    scroller.setAttribute('role', 'region');
+    scroller.setAttribute('aria-label', 'Snapshot versus current metrics table. Scroll sideways to see all columns.');
+    scroller.append(table);
+    const hint = document.createElement('p');
+    hint.className = 'help comparison-scroll-hint';
+    hint.textContent = 'Scroll the table sideways to see Snapshot, Current, and Difference.';
+    const group = document.createDocumentFragment();
+    group.append(scroller, hint);
+    return group;
+  }
+  function buildCheckStatusTable(snapshotResult, currentResult, snapshotScenario, currentScenario) {
+    const before = checksFor(snapshotResult, snapshotScenario);
+    const after = checksFor(currentResult, currentScenario);
+    const beforeByLabel = new Map(before.map(check => [check.label, check]));
+    const afterByLabel = new Map(after.map(check => [check.label, check]));
+    const labels = after.map(check => check.label);
+    for (const check of before) {
+      if (!afterByLabel.has(check.label)) labels.push(check.label);
+    }
+    const table = document.createElement('table');
+    const caption = document.createElement('caption');
+    caption.textContent = 'Check status: snapshot and current';
+    table.append(caption);
+    const thead = document.createElement('thead');
+    const hr = document.createElement('tr');
+    for (const heading of ['Check', 'Snapshot', 'Current']) {
+      const th = document.createElement('th');
+      th.scope = 'col';
+      th.textContent = heading;
+      hr.append(th);
+    }
+    thead.append(hr);
+    table.append(thead);
+    const tbody = document.createElement('tbody');
+    const statusText = (check, label, scenario) => {
+      if (!check) return 'Not applicable';
+      if (label === 'Strobe timing' && scenario.motion.illumination !== 'strobe') return 'Not applicable';
+      if (check.status === 'meets') return 'Meets';
+      if (check.status === 'exceeds') return 'Exceeds';
+      return 'Not assessed';
+    };
+    for (const label of labels) {
+      const tr = document.createElement('tr');
+      const name = document.createElement('th');
+      name.scope = 'row';
+      name.textContent = label;
+      tr.append(name);
+      for (const status of [
+        statusText(beforeByLabel.get(label), label, snapshotScenario),
+        statusText(afterByLabel.get(label), label, currentScenario)
+      ]) {
+        const td = document.createElement('td');
+        td.textContent = status;
+        tr.append(td);
+      }
+      tbody.append(tr);
+    }
+    table.append(tbody);
+    return table;
+  }
+  function renderComparison(currentResult) {
+    const container = $('#comparison');
+    container.replaceChildren();
+    if (!state.comparison) {
+      const p = document.createElement('p');
+      p.className = 'help';
+      p.textContent = 'No comparison snapshot. Use Snapshot comparison to keep the current inputs, then edit the active scenario.';
+      container.append(p);
+      return;
+    }
+    const snapshotResult = M.evaluate(state.comparison);
+    const snapshotName = document.createElement('p');
+    snapshotName.className = 'status-line';
+    snapshotName.textContent = 'Snapshot: ' + state.comparison.name;
+    const currentName = document.createElement('p');
+    currentName.textContent = 'Current: ' + state.active.name;
+    container.append(snapshotName, currentName);
+    container.append(buildComparisonTable(snapshotResult, currentResult, state.comparison, state.active));
+    container.append(buildCheckStatusTable(snapshotResult, currentResult, state.comparison, state.active));
+    const changes = changedInputs(state.comparison, state.active);
+    const heading = document.createElement('h3');
+    heading.textContent = 'Input differences';
+    container.append(heading);
+    if (!changes.length) {
+      const p = document.createElement('p');
+      p.className = 'help';
+      p.textContent = 'No input differences.';
+      container.append(p);
+    } else {
+      const list = document.createElement('ul');
+      list.className = 'compact-list';
+      for (const change of changes.slice(0, 14)) {
+        const li = document.createElement('li');
+        li.textContent = change;
+        list.append(li);
+      }
+      if (changes.length > 14) {
+        const li = document.createElement('li');
+        li.textContent = 'and ' + (changes.length - 14) + ' more differences';
+        list.append(li);
+      }
+      container.append(list);
+    }
+    const unresolved = checksFor(currentResult, state.active).filter(check => check.status !== 'meets');
+    const uHeading = document.createElement('h3');
+    uHeading.textContent = 'Unresolved current checks';
+    container.append(uHeading);
+    if (!unresolved.length) {
+      const p = document.createElement('p');
+      p.className = 'help';
+      p.textContent = 'All assessed checks meet their entered limits.';
+      container.append(p);
+    } else {
+      const list = document.createElement('ul');
+      list.className = 'compact-list';
+      for (const check of unresolved) {
+        const li = document.createElement('li');
+        li.textContent = check.label + ': ' + (check.status === 'exceeds' ? 'exceeds' : 'not assessed');
+        list.append(li);
+      }
+      container.append(list);
+    }
+  }
+
+  function renderPrintReport(result) {
+    const root = $('#print-report');
+    root.replaceChildren();
+    const article = document.createElement('article');
+    const h1 = document.createElement('h1');
+    h1.textContent = 'Vision inspection estimator report';
+    article.append(h1);
+    const meta = document.createElement('p');
+    meta.textContent = (state.active.name || 'Untitled scenario') + ' · Generated ' + new Date().toLocaleString();
+    article.append(meta);
+    const scope = document.createElement('p');
+    scope.textContent = 'Software estimates only. This report is not a physical camera validation, production inspection trial, detection-accuracy prediction, or guaranteed performance statement.';
+    article.append(scope);
+
+    const h2 = document.createElement('h2');
+    h2.textContent = 'Current requirements';
+    article.append(h2);
+    const table = document.createElement('table');
+    const tbody = document.createElement('tbody');
+    for (const [label, value] of summaryRows(result)) {
+      const tr = document.createElement('tr');
+      const th = document.createElement('th');
+      th.scope = 'row';
+      th.textContent = label;
+      const td = document.createElement('td');
+      td.textContent = value;
+      tr.append(th, td);
+      tbody.append(tr);
+    }
+    table.append(tbody);
+    article.append(table);
+
+    const inputsHeading = document.createElement('h2');
+    inputsHeading.textContent = 'Current inputs';
+    article.append(inputsHeading);
+    const inputsIntro = document.createElement('p');
+    inputsIntro.textContent = 'All active input values with units. Optional values left blank are shown as unknown rather than assumed to be zero.';
+    article.append(inputsIntro);
+    const inputsTable = document.createElement('table');
+    const inputsBody = document.createElement('tbody');
+    for (const [label, text] of inputRows()) {
+      const tr = document.createElement('tr');
+      const th = document.createElement('th');
+      th.scope = 'row';
+      th.textContent = label;
+      const td = document.createElement('td');
+      td.textContent = text;
+      tr.append(th, td);
+      inputsBody.append(tr);
+    }
+    inputsTable.append(inputsBody);
+    article.append(inputsTable);
+
+    const checksHeading = document.createElement('h2');
+    checksHeading.textContent = 'Checks';
+    article.append(checksHeading);
+    const checks = document.createElement('div');
+    checks.className = 'checklist';
+    for (const check of checksFor(result, state.active)) appendCheck(checks, check.label, check.status, check.explanation);
+    article.append(checks);
+
+    const assumptionsHeading = document.createElement('h2');
+    assumptionsHeading.textContent = 'Assumptions and limits';
+    article.append(assumptionsHeading);
+    const assumptions = document.createElement('ul');
+    for (const text of [
+      'Thin-lens, parallel sensor and object planes; principal-plane object distance, not mechanical clearance.',
+      'Geometric sampling only; contrast, MTF, demosaicing, material, lighting geometry, and algorithms are excluded.',
+      'Relative light model I × t / N_eff²; no absolute lux requirement without a comparable measured reference.',
+      'Geometric depth of field excludes aberrations and diffraction; Airy diameter is an indicative scale only.',
+      'Constant-speed planar motion; no rotation, perspective, line-scan, 3D, hardware control, or catalog selection.',
+      'Maximum exposure/pulse and maximum conveyor speed are first-order blur-limit values. With strobe illumination the speed limit is pulse-only.',
+      'Required strobe duty cycle is an on-fraction requirement, not evidence that a controller or lamp supports overdrive.',
+      'Model defaults for a new scenario: five pixels per feature, one-pixel motion limit, 20% framing margin, 550 nm wavelength, and one-pixel defocus diameter. The active values are listed under Current inputs and remain editable.'
+    ]) {
+      const li = document.createElement('li');
+      li.textContent = text;
+      assumptions.append(li);
+    }
+    article.append(assumptions);
+
+    const reference = state.active.lighting.reference;
+    const refHeading = document.createElement('h2');
+    refHeading.textContent = 'Lighting reference';
+    article.append(refHeading);
+    const refText = document.createElement('p');
+    if (reference === null) refText.textContent = 'No reference. Relative signal is unassessed; the teaching view uses an illustrative baseline.';
+    else refText.textContent = 'Integration ' + formatQuantity(reference.integrationUs, 'µs') + '; effective f-number ' + formatQuantity(reference.effectiveFNumber, 'N_eff') + '; illumination ' + formatQuantity(reference.illuminationLux, 'lux') + '; confirmed comparable: ' + (reference.confirmedComparable ? 'yes' : 'no') + '; note: ' + (reference.note || '(empty)');
+    article.append(refText);
+
+    if (state.comparison) {
+      const compHeading = document.createElement('h2');
+      compHeading.textContent = 'Comparison';
+      article.append(compHeading);
+      const names = document.createElement('p');
+      names.textContent = 'Snapshot: ' + state.comparison.name + ' · Current: ' + state.active.name;
+      article.append(names);
+      article.append(buildComparisonTable(M.evaluate(state.comparison), result, state.comparison, state.active));
+      article.append(buildCheckStatusTable(M.evaluate(state.comparison), result, state.comparison, state.active));
+      const changes = changedInputs(state.comparison, state.active);
+      const changeHeading = document.createElement('h3');
+      changeHeading.textContent = 'Input differences';
+      article.append(changeHeading);
+      if (!changes.length) {
+        const p = document.createElement('p');
+        p.textContent = 'No input differences.';
+        article.append(p);
+      } else {
+        const list = document.createElement('ul');
+        for (const change of changes) {
+          const li = document.createElement('li');
+          li.textContent = change;
+          list.append(li);
+        }
+        article.append(list);
+      }
+    }
+
+    if (result.errors.length) {
+      const errorHeading = document.createElement('h2');
+      errorHeading.textContent = 'Errors';
+      article.append(errorHeading);
+      for (const error of result.errors) {
+        const p = document.createElement('p');
+        p.textContent = groupLabel(error.group) + ': ' + error.message;
+        article.append(p);
+      }
+    }
+    root.append(article);
+  }
+
+  function renderLessonNote(result) {
+    const box = $('#lesson-state');
+    box.replaceChildren();
+    if (!state.lesson) {
+      box.textContent = 'No lesson loaded. The default example is active.';
+      return;
+    }
+    const lesson = LESSONS[state.lesson];
+    const base = lesson.base();
+    const baseResult = M.evaluate(base);
+    const intro = document.createElement('p');
+    intro.className = 'status-line';
+    intro.textContent = 'Teaching example: ' + lesson.title + '. The comparison snapshot was replaced by this lesson.';
+    box.append(intro);
+    const detail = document.createElement('p');
+    if (state.lesson === 'speed') {
+      const ratio = M.changeRatio(base.motion.exposureUs, state.active.motion.exposureUs);
+      const blur = result.motion ? result.motion.exposureBlurPx : null;
+      detail.textContent = 'Exposure is ' + formatQuantity(state.active.motion.exposureUs, 'µs') +
+        (ratio === null ? '' : ' (' + formatNumber(ratio) + '× the lesson start)') +
+        '. Continuous-light exposure displacement is ' + formatQuantity(blur, 'px') +
+        '. Frame rate changes do not alter this exposure displacement.';
+    } else if (state.lesson === 'coverage') {
+      const widthRatio = M.changeRatio(base.optics.objectWidthMm, state.active.optics.objectWidthMm);
+      const mmRatio = baseResult.optics && result.optics ? M.changeRatio(baseResult.optics.mmPerPixelX, result.optics.mmPerPixelX) : null;
+      const feature = result.detail ? Math.min(result.detail.featurePixelsX, result.detail.featurePixelsY) : null;
+      detail.textContent = 'Object width is ' + formatQuantity(state.active.optics.objectWidthMm, 'mm') +
+        (widthRatio === null ? '' : ' (' + formatNumber(widthRatio) + '× the lesson start)') +
+        '. Sampling is ' + formatQuantity(result.optics && result.optics.mmPerPixelX, 'mm/px') +
+        (mmRatio === null ? '' : ', ' + formatNumber(mmRatio) + '× the starting mm/pixel') +
+        '. The fixed feature spans ' + formatQuantity(feature, 'px') + '.';
+    } else if (state.lesson === 'aperture') {
+      const light = result.lighting && result.lighting.requiredIntensityRatio;
+      const dofRatio = baseResult.focus && result.focus ? M.changeRatio(baseResult.focus.depthOfFieldMm, result.focus.depthOfFieldMm) : null;
+      const airyRatio = baseResult.focus && result.focus ? M.changeRatio(baseResult.focus.airyDiameterUm, result.focus.airyDiameterUm) : null;
+      detail.textContent = 'Aperture is f/' + formatNumber(state.active.focus.fNumber) +
+        '. Required light multiplier versus the reference is ' + formatQuantity(light, '×') +
+        '. Geometric depth of field is ' + formatQuantity(result.focus && result.focus.depthOfFieldMm, 'mm') +
+        (dofRatio === null ? '' : ' (' + formatNumber(dofRatio) + '× the f/4 starting value)') +
+        '; Airy diameter is ' + formatQuantity(result.focus && result.focus.airyDiameterUm, 'µm') +
+        (airyRatio === null ? '' : ' (' + formatNumber(airyRatio) + '× the f/4 starting value)') + '.';
+    } else {
+      const ambient = state.active.motion.ambientSignalPercent;
+      const assessed = result.motion && result.motion.assessedBlurPx;
+      const pulse = result.motion && result.motion.pulseBlurPx;
+      detail.textContent = 'Collected ambient signal is ' + (ambient === null ? 'unknown' : formatNumber(ambient) + '%') +
+        '. Pulse-only displacement is ' + formatQuantity(pulse, 'px') +
+        '. Conservative assessed extent is ' + formatQuantity(assessed, 'px') +
+        (ambient !== null && ambient > 0 ? ' because continuous light smears across the full exposure.' : '.');
+    }
+    box.append(detail);
+    const prompt = document.createElement('p');
+    prompt.className = 'help';
+    prompt.textContent = 'Change the named control, then watch the summary and the linked diagram update together. Reset this lesson returns to the starting setup.';
+    box.append(prompt);
+  }
+
+  function scheduleViews(scenario, result) {
+    pendingView = { scenario, result };
+    if (viewFrame) return;
+    viewFrame = requestAnimationFrame(() => {
+      viewFrame = 0;
+      const pending = pendingView;
+      pendingView = null;
+      if (!pending) return;
+      try { drawViews(pending.scenario, pending.result); }
+      catch (error) { setMessage('View error: ' + error.message); }
+    });
+  }
+  function render() {
+    const result = M.evaluate(state.active);
+    renderResults(result);
+    updateControlStates();
+    renderLessonNote(result);
+    renderComparison(result);
+    renderPrintReport(result);
+    scheduleViews(state.active, result);
+  }
+  function svgEl(name, attrs, text) {
+    const node = document.createElementNS(SVG_NS, name);
+    if (attrs) for (const key of Object.keys(attrs)) node.setAttribute(key, attrs[key]);
+    if (text !== undefined && text !== null) node.textContent = text;
+    return node;
+  }
+  function makeSvg(width, height, titleText, descText) {
+    const svg = svgEl('svg', { viewBox: '0 0 ' + width + ' ' + height, role: 'img' });
+    svg.setAttribute('width', String(width));
+    svg.setAttribute('height', String(height));
+    const title = svgEl('title', null, titleText);
+    const desc = svgEl('desc', null, descText);
+    svg.append(title, desc);
+    return svg;
+  }
+  function addFigure(container, svg, captionText) {
+    const figure = document.createElement('figure');
+    const scroller = document.createElement('div');
+    scroller.className = 'svg-scroll';
+    scroller.append(svg);
+    figure.append(scroller);
+    const caption = document.createElement('figcaption');
+    caption.textContent = captionText;
+    figure.append(caption);
+    container.append(figure);
+  }
+  function message(container, text) {
+    const p = document.createElement('p');
+    p.className = 'help';
+    p.textContent = text;
+    container.append(p);
+  }
+  function svgText(svg, x, y, text, className) {
+    svg.append(svgEl('text', { x: String(x), y: String(y), class: className || 'svg-text' }, text));
+  }
+  function svgLine(svg, x1, y1, x2, y2, className, dash) {
+    const attrs = { x1: String(x1), y1: String(y1), x2: String(x2), y2: String(y2), class: className };
+    if (dash) attrs['stroke-dasharray'] = dash;
+    svg.append(svgEl('line', attrs));
+  }
+  function framingRects(s, o, width = 560, height = 300) {
+    const scale = Math.min((width - 64) / o.fovWidthMm, (height - 64) / o.fovHeightMm);
+    function rect(w, h) {
+      return { x: (width - w * scale) / 2, y: (height - h * scale) / 2, width: w * scale, height: h * scale };
+    }
+    return {
+      field: rect(o.fovWidthMm, o.fovHeightMm),
+      object: rect(s.optics.objectWidthMm, s.optics.objectHeightMm),
+      margin: rect(o.requiredWidthMm, o.requiredHeightMm)
+    };
+  }
+
+  function renderCoverageView(container, s, r) {
+    container.replaceChildren();
+    if (!r.optics) {
+      message(container, 'Coverage view unavailable. Correct the optics inputs to restore the optical path and framing graphics.');
+      return;
+    }
+    const o = r.optics;
+    const blocks = document.createElement('div');
+    blocks.className = 'view-blocks';
+    container.append(blocks);
+
+    const pathSvg = makeSvg(560, 270, 'Schematic thin-lens optical path',
+      'Object plane, principal lens plane, and sensor drawn schematically. Distances are labelled with calculated values, not to optical-path scale.');
+    svgLine(pathSvg, 30, 135, 530, 135, 'svg-axis');
+    svgLine(pathSvg, 60, 45, 60, 205, 'svg-object');
+    svgLine(pathSvg, 270, 55, 270, 195, 'svg-lens');
+    svgLine(pathSvg, 500, 55, 500, 195, 'svg-sensor');
+    pathSvg.append(svgEl('circle', { cx: '270', cy: '135', r: '6', class: 'svg-lens' }));
+    svgLine(pathSvg, 60, 65, 270, 135, 'svg-ray');
+    svgLine(pathSvg, 270, 135, 500, 200, 'svg-ray');
+    svgLine(pathSvg, 60, 195, 270, 135, 'svg-ray');
+    svgLine(pathSvg, 270, 135, 500, 70, 'svg-ray');
+    svgText(pathSvg, 45, 45, 'Object', 'svg-text');
+    svgText(pathSvg, 240, 45, 'Principal lens plane', 'svg-text');
+    svgText(pathSvg, 484, 45, 'Sensor', 'svg-text');
+    svgText(pathSvg, 44, 232, 'u = ' + formatQuantity(o.objectDistanceMm, 'mm'), 'svg-text');
+    svgText(pathSvg, 430, 232, 'v = ' + formatQuantity(o.imageDistanceMm, 'mm'), 'svg-text');
+    svgText(pathSvg, 210, 258, 'm = ' + formatQuantity(o.magnification, '×') + ' · spacing schematic', 'svg-muted');
+    addFigure(blocks, pathSvg, 'Optical path: object distance is measured from the principal plane, not front-of-lens clearance. Ray spacing is schematic.');
+
+    const frameSvg = makeSvg(560, 320, 'Proportional framing rectangles',
+      'Field of view, object, and requested margin rectangles drawn proportionally. Clipping is shown when the field is smaller than the requested margin.');
+    const rects = framingRects(s, o);
+    const clipId = 'framing-field-clip';
+    const defs = svgEl('defs');
+    const clip = svgEl('clipPath', { id: clipId });
+    clip.append(svgEl('rect', {
+      x: String(rects.field.x), y: String(rects.field.y),
+      width: String(rects.field.width), height: String(rects.field.height)
+    }));
+    defs.append(clip);
+    frameSvg.append(defs);
+    const group = svgEl('g', { 'clip-path': 'url(#' + clipId + ')' });
+    group.append(svgEl('rect', { x: String(rects.field.x), y: String(rects.field.y), width: String(rects.field.width), height: String(rects.field.height), class: 'svg-field' }));
+    group.append(svgEl('rect', { x: String(rects.object.x), y: String(rects.object.y), width: String(rects.object.width), height: String(rects.object.height), class: 'svg-object' }));
+    group.append(svgEl('rect', { x: String(rects.margin.x), y: String(rects.margin.y), width: String(rects.margin.width), height: String(rects.margin.height), class: 'svg-margin' }));
+    frameSvg.append(group);
+    // The requested rectangle is clipped to the actual field above. When it
+    // overflows, redraw its outline unclipped so the missing coverage is visible.
+    const overflowX = Math.max(0, o.requiredWidthMm - o.fovWidthMm);
+    const overflowY = Math.max(0, o.requiredHeightMm - o.fovHeightMm);
+    const objectOverflow = Math.max(0, s.optics.objectWidthMm - o.fovWidthMm) > 0 ||
+      Math.max(0, s.optics.objectHeightMm - o.fovHeightMm) > 0;
+    const clipped = o.coverageStatus !== 'meets' || overflowX > 1e-9 || overflowY > 1e-9;
+    if (clipped) {
+      frameSvg.append(svgEl('rect', { x: String(rects.margin.x), y: String(rects.margin.y), width: String(rects.margin.width), height: String(rects.margin.height), class: 'svg-margin', 'stroke-dasharray': '6 4' }));
+      if (objectOverflow) {
+        frameSvg.append(svgEl('rect', { x: String(rects.object.x), y: String(rects.object.y), width: String(rects.object.width), height: String(rects.object.height), class: 'svg-object' }));
+      }
+    }
+    svgText(frameSvg, 16, 24, 'Field ' + pair(o.fovWidthMm, o.fovHeightMm, 'mm'), 'svg-text');
+    svgText(frameSvg, 16, 300, 'Object ' + pair(s.optics.objectWidthMm, s.optics.objectHeightMm, 'mm') + ' · margin ' + formatQuantity(s.optics.marginPercent, '%'), 'svg-text');
+    addFigure(blocks, frameSvg, clipped
+      ? 'Requested margin exceeds the field by ' + formatQuantity(overflowX, 'mm') + ' horizontally and ' + formatQuantity(overflowY, 'mm') + ' vertically. The red dashed outline continues outside the field where coverage is missing.'
+      : 'The field contains the requested margin. Aspect-ratio differences can still leave unused capacity on the non-limiting axis.');
+
+    const legend = document.createElement('div');
+    legend.className = 'legend';
+    for (const [cls, text] of [['field-key', 'Field of view'], ['margin-key', 'Requested margin'], ['unknown-key', 'Object outline']]) {
+      const span = document.createElement('span');
+      span.className = cls;
+      span.textContent = text;
+      legend.append(span);
+    }
+    container.append(legend);
+
+    const detail = document.createElement('p');
+    detail.textContent = 'Angular field: ' + formatQuantity(o.angleXDeg, '°') + ' horizontal, ' + formatQuantity(o.angleYDeg, '°') + ' vertical. The limiting sensor axis sets magnification, so sensor and object aspect-ratio differences leave unused field on the other axis.';
+    container.append(detail);
+  }
+
+  function renderDetailView(container, s, r) {
+    container.replaceChildren();
+    if (!r.optics || !r.detail) {
+      message(container, 'Feature grid unavailable. Enter valid coverage and sampling inputs to restore the pixel grid.');
+      return;
+    }
+    const d = r.detail;
+    const fpx = Math.max(0.01, d.featurePixelsX);
+    const fpy = Math.max(0.01, d.featurePixelsY);
+    const cols = Math.max(8, Math.min(40, Math.ceil(Math.max(fpx, fpy)) + 3));
+    const rows = Math.max(8, Math.min(30, Math.ceil(Math.max(fpx, fpy)) + 3));
+    const cell = Math.min(360 / cols, 280 / rows);
+    const gridW = cell * cols;
+    const gridH = cell * rows;
+    const ox = (460 - gridW) / 2;
+    const oy = (350 - gridH) / 2;
+    const svg = makeSvg(460, 350, 'Feature and pixel grid',
+      'A synthetic feature is drawn at the calculated image-pixel size over a labelled pixel grid. This illustrates sampling geometry, not detection performance.');
+    svg.append(svgEl('rect', { x: String(ox), y: String(oy), width: String(gridW), height: String(gridH), fill: 'none', class: 'svg-grid' }));
+    for (let i = 1; i < cols; i++) svgLine(svg, ox + i * cell, oy, ox + i * cell, oy + gridH, 'svg-grid');
+    for (let i = 1; i < rows; i++) svgLine(svg, ox, oy + i * cell, ox + gridW, oy + i * cell, 'svg-grid');
+    const fw = Math.min(gridW, fpx * cell);
+    const fh = Math.min(gridH, fpy * cell);
+    svg.append(svgEl('rect', { x: String(ox + (gridW - fw) / 2), y: String(oy + (gridH - fh) / 2), width: String(fw), height: String(fh), class: 'svg-feature' }));
+    svgText(svg, ox, oy - 10, Math.round(fpx * 100) / 100 + ' × ' + Math.round(fpy * 100) / 100 + ' image pixels', 'svg-text');
+    svgText(svg, ox, oy + gridH + 22, '1 displayed pixel = ' + formatNumber(cell) + ' screen px · feature ' + formatQuantity(s.inspection.featureMm, 'mm'), 'svg-muted');
+    addFigure(container, svg, 'Synthetic feature at ' + formatQuantity(s.inspection.featureMm, 'mm') + ' across ' + pair(d.featurePixelsX, d.featurePixelsY, 'px') + '. The pixel grid is enlarged; blur is not exaggerated independently of the numbers.');
+
+    const text = document.createElement('p');
+    text.textContent = 'Allowed sampling for the requested ' + formatNumber(s.inspection.pixelsPerFeature) + ' pixels per feature is ' + formatQuantity(d.allowedMmPerPixel, 'mm/px') + '. Required image resolution is ' + formatNumber(d.requiredPixelsX) + ' × ' + formatNumber(d.requiredPixelsY) + ' pixels at the current field of view. Cropping or reading a smaller region of interest reduces coverage but retains the same mm/pixel when pixel pitch and magnification are unchanged.';
+    container.append(text);
+  }
+  function sharpIntensity(u, v) {
+    const ax = Math.abs(u), ay = Math.abs(v);
+    let value = 0.06;
+    if (ax <= 7 && ay <= 5) value = 1;
+    if (ax <= 1.1 && ay <= 10) value = Math.max(value, 0.85);
+    if (ay <= 1.1 && ax <= 10) value = Math.max(value, 0.85);
+    return value;
+  }
+  function bilinear(u, v) {
+    const x0 = Math.floor(u), y0 = Math.floor(v);
+    const fx = u - x0, fy = v - y0;
+    const a = sharpIntensity(x0, y0) * (1 - fx) + sharpIntensity(x0 + 1, y0) * fx;
+    const b = sharpIntensity(x0, y0 + 1) * (1 - fx) + sharpIntensity(x0 + 1, y0 + 1) * fx;
+    return a * (1 - fy) + b * fy;
+  }
+  function fullExposureSamples(motion) {
+    const samples = [];
+    const count = 128;
+    for (let i = 0; i < count; i++) samples.push({
+      component: 'ambient', timeUs: motion.exposureUs * (i + 0.5) / count, weight: 1 / count
+    });
+    return samples;
+  }
+  function pulseSamples(motion) {
+    const samples = [];
+    const count = 128;
+    for (let i = 0; i < count; i++) samples.push({
+      component: 'pulse', timeUs: motion.pulseDelayUs + motion.pulseUs * (i + 0.5) / count, weight: 1 / count
+    });
+    return samples;
+  }
+  function sampleOffset(sample, motion, optics) {
+    const timeSeconds = (sample.timeUs - motion.exposureUs / 2) / 1e6;
+    const radians = motion.directionDeg * Math.PI / 180;
+    return {
+      x: motion.speedMmS * timeSeconds * Math.cos(radians) / optics.mmPerPixelX,
+      y: motion.speedMmS * timeSeconds * Math.sin(radians) / optics.mmPerPixelY
+    };
+  }
+  function drawPreview(canvas, motion, optics, samples, sharpOnly) {
+    canvas.width = 96;
+    canvas.height = 64;
+    const context = canvas.getContext('2d');
+    const image = context.createImageData(96, 64);
+    for (let y = 0; y < 64; y++) {
+      for (let x = 0; x < 96; x++) {
+        let value = 0;
+        if (sharpOnly) {
+          value = bilinear(x + 0.5 - 48, y + 0.5 - 32);
+        } else {
+          for (const sample of samples) {
+            const offset = sampleOffset(sample, motion, optics);
+            // A source point moving by +offset appears at the sensor shifted by
+            // +offset, so the pixel at (x, y) must sample the source at -offset.
+            value += sample.weight * bilinear(x + 0.5 - 48 - offset.x, y + 0.5 - 32 - offset.y);
+          }
+        }
+        const level = Math.round(Math.max(0, Math.min(1, value)) * 255);
+        const index = (y * 96 + x) * 4;
+        image.data[index] = level;
+        image.data[index + 1] = level;
+        image.data[index + 2] = level;
+        image.data[index + 3] = 255;
+      }
+    }
+    context.putImageData(image, 0, 0);
+  }
+  function previewCanvas(motion, optics, samples, sharpOnly, label) {
+    const result = { exceeded: false, maxX: 0, maxY: 0, canvas: null };
+    for (const sample of samples) {
+      const offset = sampleOffset(sample, motion, optics);
+      result.maxX = Math.max(result.maxX, Math.abs(offset.x));
+      result.maxY = Math.max(result.maxY, Math.abs(offset.y));
+    }
+    const pad = Math.ceil(Math.max(result.maxX, result.maxY)) + 2;
+    if (pad > 460) {
+      result.exceeded = true;
+      return result;
+    }
+    const canvas = document.createElement('canvas');
+    canvas.style.width = '100%';
+    canvas.style.maxWidth = '480px';
+    canvas.setAttribute('role', 'img');
+    canvas.setAttribute('aria-label', label);
+    canvas.textContent = 'Synthetic feature preview.';
+    drawPreview(canvas, motion, optics, samples, sharpOnly);
+    result.canvas = canvas;
+    return result;
+  }
+  function renderShutterSvg(s, r) {
+    const motion = s.motion;
+    const mr = r.motion;
+    const svg = makeSvg(560, 300, 'Rolling and global shutter exposure timing',
+      'First, middle, and last row exposure intervals, the common flash window, and the configured pulse. Unknown row timing is shown as unknown rather than zero.');
+    const origin = 70;
+    const width = 450;
+    const relevant = Math.max(motion.exposureUs || 1,
+      (mr.rowSpanUs || 0) + (motion.pulseDelayUs || 0) + (motion.pulseUs || 0), 1);
+    const scale = width / relevant;
+    const t = value => origin + value * scale;
+    if (motion.shutter === 'rolling' && mr.rowSpanUs === null) {
+      for (let i = 0; i < 3; i++) {
+        const y = 70 + i * 55;
+        svg.append(svgEl('rect', { x: String(origin + 20), y: String(y), width: String(Math.min(220, width)), height: '20', class: 'svg-bar', opacity: '0.35' }));
+        svgText(svg, origin + 20, y - 6, ['First row', 'Middle row', 'Last row'][i] + ': exposure interval unknown', 'svg-text');
+      }
+      svgText(svg, origin, 250, 'Row span unknown, so no common flash window is invented. Pulse placement cannot be verified.', 'svg-text');
+      return svg;
+    }
+    for (let i = 0; i <= 4; i++) {
+      const value = relevant * i / 4;
+      svgLine(svg, t(value), 40, t(value), 245, 'svg-axis');
+      svgText(svg, t(value) - 8, 265, formatNumber(value) + ' µs', 'svg-muted');
+    }
+    const rowSpan = mr.rowSpanUs || 0;
+    const starts = motion.shutter === 'global' ? [0, 0, 0] : [0, rowSpan / 2, rowSpan];
+    const labels = ['First row', 'Middle row', 'Last row'];
+    for (let i = 0; i < 3; i++) {
+      const y = 65 + i * 45;
+      const start = starts[i];
+      svg.append(svgEl('rect', { x: String(t(start)), y: String(y), width: String(Math.max(2, (motion.exposureUs || 0) * scale)), height: '18', class: 'svg-bar', opacity: '0.7' }));
+      svgText(svg, origin, y - 4, labels[i], 'svg-text');
+    }
+    if (mr.flashWindowUs !== null && mr.flashWindowUs > 0) {
+      svg.append(svgEl('rect', { x: String(t(rowSpan)), y: String(35), width: String(Math.max(2, mr.flashWindowUs * scale)), height: '10', class: 'svg-flash' }));
+      svgText(svg, t(rowSpan), 30, 'Common flash window ' + formatQuantity(mr.flashWindowUs, 'µs'), 'svg-text');
+    } else {
+      svgText(svg, origin, 30, 'No common flash window: exposure is not longer than the row start span.', 'svg-text');
+    }
+    if (motion.illumination === 'strobe' && motion.pulseDelayUs !== null) {
+      svg.append(svgEl('rect', { x: String(t(motion.pulseDelayUs)), y: String(208), width: String(Math.max(2, motion.pulseUs * scale)), height: '12', class: 'svg-pulse' }));
+      svgText(svg, t(motion.pulseDelayUs), 202, 'Configured pulse', 'svg-text');
+    }
+    const legend = document.createElement('div');
+    legend.className = 'legend';
+    for (const [cls, text] of [['field-key', 'Row exposure'], ['flash-key', 'Common flash window'], ['pulse-key', 'Pulse']]) {
+      const span = document.createElement('span');
+      span.className = cls;
+      span.textContent = text;
+      legend.append(span);
+    }
+    const wrap = document.createElement('div');
+    wrap.append(svg, legend);
+    return wrap;
+  }
+  function renderMotionView(container, s, r) {
+    container.replaceChildren();
+    if (!r.motion) {
+      message(container, 'Motion preview unavailable. Correct speed, exposure, direction, shutter, illumination, or pulse inputs.');
+      return;
+    }
+    const motion = s.motion;
+    const optics = r.optics;
+    const blocks = document.createElement('div');
+    blocks.className = 'view-blocks';
+    container.append(blocks);
+    let integratedSamples = M.motionSamples(motion);
+    let pulsePreviewSamples = null;
+    let noteText = 'Continuous light integrates across the full exposure. The preview weights source samples by physical displacement.';
+    if (motion.illumination === 'strobe') {
+      if (r.motion.timingStatus === 'meets' && integratedSamples && motion.ambientSignalPercent !== null) {
+        noteText = 'Pulse and ambient contributions are weighted by collected signal. The 128-sample integration is an illustrative approximation.';
+      } else {
+        integratedSamples = fullExposureSamples(motion);
+        noteText = 'Pulse timing or collected ambient signal is not verified. The exposed preview shows the continuous exposure trajectory; the pulse-only preview is illustrative and does not claim that every row was illuminated.';
+        if (motion.pulseDelayUs !== null) pulsePreviewSamples = pulseSamples(motion);
+      }
+    }
+    const sharp = previewCanvas(motion, optics, [], true, 'Sharp synthetic feature with no motion');
+    const exposed = previewCanvas(motion, optics, integratedSamples, false, 'Integrated synthetic feature with motion');
+    function addPreview(preview, caption, failedText) {
+      if (preview.exceeded) {
+        message(blocks, failedText + ' Trail exceeds preview range; numerical results are unchanged.');
+        return;
+      }
+      const figure = document.createElement('figure');
+      figure.append(preview.canvas);
+      const cap = document.createElement('figcaption');
+      cap.textContent = caption;
+      figure.append(cap);
+      blocks.append(figure);
+    }
+    addPreview(sharp, 'Sharp reference: no motion integration. 96 × 64 image-pixel region enlarged with nearest-neighbor scaling.', 'Sharp preview unavailable.');
+    addPreview(exposed, 'Exposed preview: ' + Math.round((r.motion.assessedBlurPx === null ? r.motion.exposureBlurPx : r.motion.assessedBlurPx) * 100) / 100 + ' px assessed displacement. ' + noteText, 'Exposed preview unavailable.');
+    if (pulsePreviewSamples) {
+      const pulse = previewCanvas(motion, optics, pulsePreviewSamples, false, 'Illustrative pulse-only synthetic feature');
+      addPreview(pulse, 'Pulse-only illustrative preview: ' + formatQuantity(r.motion.pulseBlurPx, 'px') + ' displacement. Timing is not validated.', 'Pulse preview unavailable.');
+    }
+    container.append(blocks);
+    const shutterWrap = document.createElement('div');
+    shutterWrap.className = 'view';
+    const heading = document.createElement('h3');
+    heading.textContent = 'Shutter timing';
+    shutterWrap.append(heading);
+    const shutterScroller = document.createElement('div');
+    shutterScroller.className = 'svg-scroll';
+    shutterScroller.append(renderShutterSvg(s, r));
+    shutterWrap.append(shutterScroller);
+    container.append(shutterWrap);
+    const text = document.createElement('p');
+    const strobe = s.motion.illumination === 'strobe';
+    const windowLabel = strobe ? 'Maximum pulse duration at the blur limit' : 'Maximum exposure at the blur limit';
+    const speedLabel = strobe ? 'Maximum conveyor speed for a one-pixel pulse' : 'Maximum conveyor speed for one-pixel exposure blur';
+    const dutyText = strobe
+      ? ' Required strobe duty cycle is ' + (r.capture && r.capture.strobeDutyPercent !== null
+        ? formatQuantity(r.capture.strobeDutyPercent, '%') : 'not assessed') +
+        '; this is a requirement only and does not validate controller overdrive.'
+      : '';
+    text.textContent = 'Exposure displacement is ' + formatQuantity(r.motion.exposureBlurPx, 'px') +
+      '; pulse displacement is ' + formatQuantity(r.motion.pulseBlurPx, 'px') +
+      '. Rolling-shutter row span is ' + (r.motion.rowSpanUs === null ? 'unknown' : formatQuantity(r.motion.rowSpanUs, 'µs')) +
+      ' and spatial skew is ' + formatQuantity(r.motion.skewPixels, 'px') + '. ' + windowLabel + ' is ' +
+      (r.motion.windowUnbounded ? 'unbounded at zero speed' : formatQuantity(r.motion.maxWindowUs, 'µs')) +
+      '. ' + speedLabel + ' is ' + formatQuantity(r.motion.maxSpeedMmS / SPEED_UNITS[state.speedUnit], state.speedUnit) +
+      '.' + dutyText;
+    container.append(text);
+  }
+  function polyline(svg, points, className) {
+    svg.append(svgEl('polyline', {
+      points: points.map(p => p[0].toFixed(2) + ',' + p[1].toFixed(2)).join(' '),
+      class: className || 'svg-plot'
+    }));
+  }
+  function niceCeil(value) {
+    if (!Number.isFinite(value) || value <= 0) return 1;
+    const power = Math.pow(10, Math.floor(Math.log10(value)));
+    const scaled = value / power;
+    const step = scaled <= 1 ? 1 : scaled <= 2 ? 2 : scaled <= 5 ? 5 : 10;
+    return step * power;
+  }
+  const APERTURE_STOPS = [0.35, 0.5, 0.7, 0.85, 1, 1.2, 1.4, 2, 2.8, 4, 5.6, 8, 11, 16, 22, 32, 45, 64, 90, 128];
+  function apertureDomain(current) {
+    let min = 1.2, max = 32;
+    if (Number.isFinite(current) && current > 0) {
+      if (current <= min) min = Math.max(1e-9, current / 1.15);
+      if (current >= max) max = current * 1.15;
+    }
+    return { min, max };
+  }
+  function apertureTicks(min, max) {
+    return APERTURE_STOPS.filter(value => value >= min - 1e-9 && value <= max + 1e-9);
+  }
+
+  function renderLightingView(container, s, r) {
+    container.replaceChildren();
+    if (!r.lighting) {
+      message(container, 'Lighting view unavailable. Correct the optics, focus, or motion inputs to restore the exposure model.');
+      return;
+    }
+    const l = r.lighting;
+    const reference = s.lighting.reference;
+    const referenceConfirmed = reference !== null && reference.confirmedComparable === true;
+    const blocks = document.createElement('div');
+    blocks.className = 'view-blocks';
+    container.append(blocks);
+
+    const barSvg = makeSvg(560, 260, 'Available and required relative signal',
+      'Bars compare the entered intensity multiplier with the multiplier required by the reference. When the reference is missing or unconfirmed, the required bar is not assessed and the chart is illustrative.');
+    const maxBar = Math.max(1, l.requiredIntensityRatio || 1, s.lighting.intensityRatio || 1);
+    const availableHeight = 170 * Math.min(1, (s.lighting.intensityRatio || 0) / maxBar);
+    const requiredHeight = l.requiredIntensityRatio === null ? 0 : 170 * Math.min(1, l.requiredIntensityRatio / maxBar);
+    barSvg.append(svgEl('rect', { x: '150', y: String(210 - availableHeight), width: '90', height: String(availableHeight), class: 'svg-bar' }));
+    barSvg.append(svgEl('rect', { x: '320', y: String(210 - requiredHeight), width: '90', height: String(requiredHeight), class: l.requiredIntensityRatio === null ? 'svg-bar-baseline' : 'svg-bar' }));
+    svgLine(barSvg, 110, 210, 470, 210, 'svg-axis');
+    svgText(barSvg, 150, 232, 'Entered', 'svg-text');
+    svgText(barSvg, 320, 232, l.requiredIntensityRatio === null ? 'Required (unknown)' : 'Required', 'svg-text');
+    svgText(barSvg, 150, 200 - availableHeight, formatQuantity(s.lighting.intensityRatio, '×'), 'svg-text');
+    if (l.requiredIntensityRatio !== null) {
+      svgText(barSvg, 320, 200 - requiredHeight, formatQuantity(l.requiredIntensityRatio, '×'), 'svg-text');
+    }
+    addFigure(blocks, barSvg, reference === null
+      ? 'No reference: relative signal is not assessed. The entered multiplier is still shown so the tradeoff is visible.'
+      : referenceConfirmed
+        ? 'Relative signal from the confirmed reference. Bars normalize to the larger of the two values.'
+        : 'Reference unconfirmed: a reference is present but not confirmed comparable, so the required signal is not assessed and the chart is illustrative. The entered multiplier is still shown.');
+
+    const curveSvg = makeSvg(560, 300, 'Required light multiplier versus effective f-number',
+      'The curve shows how the required multiplier changes with effective f-number at the current integration time. A current-point marker identifies the active aperture.');
+    const left = 64, right = 536, top = 26, bottom = 252;
+    const m = r.optics ? r.optics.magnification : 0;
+    const currentNeff = s.focus.fNumber * (1 + m);
+    const lightDomain = apertureDomain(currentNeff);
+    const neffMin = lightDomain.min;
+    const neffMax = lightDomain.max;
+    const referenceUsable = reference !== null && reference.confirmedComparable &&
+      reference.integrationUs > 0 && reference.effectiveFNumber > 0;
+    const baselineNeff = referenceUsable ? reference.effectiveFNumber : currentNeff;
+    const base = referenceUsable ? reference.integrationUs / l.integrationUs : 1;
+    const demand = neff => base * (neff / baselineNeff) ** 2;
+    const xOf = neff => left + (Math.log(neff / neffMin) / Math.log(neffMax / neffMin)) * (right - left);
+    const samples = [];
+    for (let i = 0; i <= 60; i++) {
+      const neff = neffMin + (neffMax - neffMin) * i / 60;
+      samples.push({ neff, value: demand(neff) });
+    }
+    const currentValue = demand(currentNeff);
+    const values = samples.map(p => p.value).concat([currentValue]).filter(v => Number.isFinite(v) && v > 0);
+    const yMin = Math.pow(10, Math.floor(Math.log10(Math.min.apply(null, values))));
+    let yMax = Math.pow(10, Math.ceil(Math.log10(Math.max.apply(null, values))));
+    if (yMax <= yMin) yMax = yMin * 10;
+    const yOf = value => bottom - (Math.log(value / yMin) / Math.log(yMax / yMin)) * (bottom - top);
+    svgLine(curveSvg, left, bottom, right, bottom, 'svg-axis');
+    svgLine(curveSvg, left, top, left, bottom, 'svg-axis');
+    for (let decade = Math.log10(yMin); decade <= Math.log10(yMax) + 1e-9; decade += 1) {
+      const value = Math.pow(10, decade);
+      const y = yOf(value);
+      svgLine(curveSvg, left, y, right, y, 'svg-grid');
+      curveSvg.append(svgEl('text', { x: String(left - 8), y: String(y + 4), 'text-anchor': 'end', class: 'svg-muted' }, formatNumber(value) + '×'));
+    }
+    for (const neff of apertureTicks(neffMin, neffMax)) {
+      const x = xOf(neff);
+      svgLine(curveSvg, x, bottom, x, bottom + 6, 'svg-axis');
+      curveSvg.append(svgEl('text', { x: String(x), y: String(bottom + 20), 'text-anchor': 'middle', class: 'svg-muted' }, formatNumber(neff, 3)));
+    }
+    svgText(curveSvg, (left + right) / 2, 292, 'Effective f-number N_eff (log scale)', 'svg-muted');
+    curveSvg.append(svgEl('text', { x: String(left), y: String(top - 8), class: 'svg-muted' },
+      referenceUsable ? 'Multiplier vs reference (log scale)' : 'Illustrative relative demand (log scale)'));
+    polyline(curveSvg, samples.map(p => [xOf(p.neff), yOf(p.value)]), referenceUsable ? 'svg-plot' : 'svg-plot svg-plot-secondary');
+    const currentX = xOf(currentNeff);
+    const currentY = yOf(currentValue);
+    curveSvg.append(svgEl('circle', { cx: String(currentX), cy: String(currentY), r: '5', class: 'svg-point' }));
+    curveSvg.append(svgEl('text', {
+      x: String(Math.min(right - 4, currentX + 8)),
+      y: String(Math.max(top + 14, currentY - 9)),
+      class: 'svg-text',
+      'text-anchor': currentX > right - 130 ? 'end' : 'start'
+    }, 'Current N_eff ' + formatNumber(currentNeff) + (referenceUsable ? ' · ' + formatQuantity(currentValue, '×') : ' · illustrative')));
+    addFigure(blocks, curveSvg, (referenceUsable
+      ? 'Required multiplier from the confirmed reference at the current integration time of ' + formatQuantity(l.integrationUs, 'µs') + '. '
+      : 'Illustrative only: ' + (reference === null ? 'no reference is enabled' : 'the reference is not confirmed comparable') + ', so this curve shows N_eff² scaling relative to the current effective f-number and is not a requirement. ') +
+      'A larger effective f-number raises the demand; changing integration time redraws the curve at a different level. Both axes are logarithmic, and the current point is marked.');
+
+    const text = document.createElement('p');
+    if (reference === null) {
+      text.textContent = 'No lighting reference is enabled, so the relative signal check is not assessed. Enable a documented, comparable setup or leave the check open. The entered intensity multiplier is ' + formatQuantity(s.lighting.intensityRatio, '×') + '.';
+    } else if (!reference.confirmedComparable) {
+      text.textContent = 'A reference exists but is not confirmed comparable. The required multiplier is therefore hidden and the signal check stays unassessed. Reference note: ' + (reference.note || '(empty)') + '.';
+    } else {
+      text.textContent = 'Compared with the reference, the required intensity multiplier is ' + formatQuantity(l.requiredIntensityRatio, '×') + '. Available relative signal is ' + formatQuantity(l.signalRatio, '× required') + '. Reference illumination is ' + formatQuantity(l.requiredIlluminationLux, 'lux') + ' after scaling. ' + (l.componentOnly ? 'Collected ambient light is nonzero or unknown, so only the strobe component is compared and the status intentionally stays unassessed.' : '');
+    }
+    container.append(text);
+    const note = document.createElement('p');
+    note.className = 'help';
+    note.textContent = 'The reference method compares like-for-like material, spectrum, optics transmission, and illumination geometry. It does not convert lamp wattage into object-plane lux.';
+    container.append(note);
+  }
+
+  function focusCurve(s, r, nMin, nMax) {
+    const optics = r.optics;
+    const points = [];
+    for (let i = 0; i <= 40; i++) {
+      const n = nMin + (nMax - nMin) * i / 40;
+      const c = s.focus.defocusLimitPx * Math.min(optics.pixelPitchXUm, optics.pixelPitchYUm) / 1000;
+      const k = n * c * (optics.objectDistanceMm - optics.focalLengthMm) / (optics.focalLengthMm ** 2);
+      const near = optics.objectDistanceMm / (1 + k);
+      const far = k >= 1 ? null : optics.objectDistanceMm / (1 - k);
+      points.push({ n, near, far, dof: far === null ? null : far - near });
+    }
+    return points;
+  }
+
+  function renderFocusView(container, s, r) {
+    container.replaceChildren();
+    if (!r.focus || !r.optics) {
+      message(container, 'Focus view unavailable. Correct the optics and focus inputs to restore the depth-of-field plots.');
+      return;
+    }
+    const f = r.focus;
+    const o = r.optics;
+    const blocks = document.createElement('div');
+    blocks.className = 'view-blocks';
+    container.append(blocks);
+
+    const rangeSvg = makeSvg(560, 260, 'Depth of field and object-height range',
+      'Near and far focus limits around the focused plane, with the centered height variation drawn as a bar.');
+    const u = o.objectDistanceMm;
+    const span = Math.max(u - f.nearMm, f.farUnbounded ? (u - f.nearMm) * 2 : (f.farMm - u), s.focus.heightVariationMm / 2, 1);
+    const scale = 440 / (span * 2);
+    const center = 280;
+    const toX = mm => center + (mm - u) * scale;
+    svgLine(rangeSvg, 60, 130, 500, 130, 'svg-axis');
+    if (!f.farUnbounded) {
+      rangeSvg.append(svgEl('rect', { x: String(toX(f.nearMm)), y: '108', width: String(Math.max(2, (f.farMm - f.nearMm) * scale)), height: '44', class: 'svg-field' }));
+    } else {
+      rangeSvg.append(svgEl('rect', { x: String(toX(f.nearMm)), y: '108', width: String(Math.max(2, 500 - toX(f.nearMm))), height: '44', class: 'svg-field' }));
+    }
+    rangeSvg.append(svgEl('rect', { x: String(toX(u - s.focus.heightVariationMm / 2)), y: '84', width: String(Math.max(2, s.focus.heightVariationMm * scale)), height: '16', class: 'svg-object' }));
+    svgLine(rangeSvg, toX(u), 72, toX(u), 164, 'svg-mark');
+    svgText(rangeSvg, Math.max(60, toX(u) - 22), 66, 'Focus', 'svg-text');
+    svgText(rangeSvg, 64, 176, 'Near ' + formatQuantity(f.nearMm, 'mm'), 'svg-text');
+    svgText(rangeSvg, 360, 176, f.farUnbounded ? 'Far: no finite limit' : 'Far ' + formatQuantity(f.farMm, 'mm'), 'svg-text');
+    svgText(rangeSvg, 64, 200, 'Object-height range ' + formatQuantity(s.focus.heightVariationMm, 'mm') + ' centered on the focused plane', 'svg-muted');
+    addFigure(blocks, rangeSvg, 'Geometric focus range for the permissible defocus diameter. Aberrations and diffraction are excluded, so this is an optimistic geometric band.');
+
+    const curveSvg = makeSvg(560, 330, 'Depth of field and Airy diameter versus f-number',
+      'Two curves share the f-number axis but use separate vertical axes: geometric depth of field in millimetres on the left and Airy diameter in micrometres on the right. Current points are marked.');
+    const left = 66, right = 500, top = 30, bottom = 270;
+    const focusDomain = apertureDomain(s.focus.fNumber);
+    const nMin = focusDomain.min, nMax = focusDomain.max;
+    const points = focusCurve(s, r, nMin, nMax);
+    const currentDof = f.depthOfFieldMm;
+    const dofSamples = points.map(p => p.dof).filter(v => v !== null && Number.isFinite(v) && v > 0);
+    if (currentDof !== null && Number.isFinite(currentDof) && currentDof > 0) dofSamples.push(currentDof);
+    const dofMax = niceCeil(Math.max.apply(null, dofSamples.concat([1])));
+    const airyMax = niceCeil(Math.max(2.44 * s.focus.wavelengthNm / 1000 * nMax * (1 + o.magnification), f.airyDiameterUm || 0, 1));
+    const xOf = n => left + (Math.log(n / nMin) / Math.log(nMax / nMin)) * (right - left);
+    const yDof = value => bottom - Math.min(1, Math.max(0, value / dofMax)) * (bottom - top);
+    const yAiry = value => bottom - Math.min(1, Math.max(0, value / airyMax)) * (bottom - top);
+    svgLine(curveSvg, left, bottom, right, bottom, 'svg-axis');
+    svgLine(curveSvg, left, top, left, bottom, 'svg-axis');
+    svgLine(curveSvg, right, top, right, bottom, 'svg-axis');
+    for (let i = 0; i <= 4; i++) {
+      const dofValue = dofMax * i / 4;
+      const dofY = yDof(dofValue);
+      svgLine(curveSvg, left - 4, dofY, left, dofY, 'svg-axis');
+      curveSvg.append(svgEl('text', { x: String(left - 8), y: String(dofY + 4), 'text-anchor': 'end', class: 'svg-muted' }, formatNumber(dofValue)));
+      const airyValue = airyMax * i / 4;
+      const airyY = yAiry(airyValue);
+      svgLine(curveSvg, right, airyY, right + 4, airyY, 'svg-axis');
+      curveSvg.append(svgEl('text', { x: String(right + 8), y: String(airyY + 4), class: 'svg-muted' }, formatNumber(airyValue)));
+    }
+    curveSvg.append(svgEl('text', { x: String(left), y: String(top - 10), class: 'svg-muted' }, 'DOF (mm)'));
+    curveSvg.append(svgEl('text', { x: String(right), y: String(top - 10), 'text-anchor': 'end', class: 'svg-muted' }, 'Airy (µm)'));
+    for (const n of apertureTicks(nMin, nMax)) {
+      const x = xOf(n);
+      svgLine(curveSvg, x, bottom, x, bottom + 5, 'svg-axis');
+      curveSvg.append(svgEl('text', { x: String(x), y: String(bottom + 19), 'text-anchor': 'middle', class: 'svg-muted' }, 'f/' + formatNumber(n)));
+    }
+    svgText(curveSvg, (left + right) / 2, 314, 'F-number (log scale)', 'svg-muted');
+    const dofCurve = [];
+    let unboundedAt = null;
+    for (const p of points) {
+      if (p.dof === null) { unboundedAt = p.n; break; }
+      dofCurve.push([xOf(p.n), yDof(p.dof)]);
+    }
+    if (dofCurve.length > 1) polyline(curveSvg, dofCurve, 'svg-plot');
+    if (unboundedAt !== null) {
+      const x = xOf(unboundedAt);
+      svgLine(curveSvg, x, top, x, bottom, 'svg-mark');
+      curveSvg.append(svgEl('text', {
+        x: String(Math.min(right - 4, x + 6)), y: String(top + 14), class: 'svg-muted',
+        'text-anchor': x > right - 150 ? 'end' : 'start'
+      }, 'DOF unbounded beyond f/' + formatNumber(unboundedAt)));
+    }
+    const airyCurve = points.map(p => [xOf(p.n), yAiry(2.44 * s.focus.wavelengthNm / 1000 * p.n * (1 + o.magnification))]);
+    polyline(curveSvg, airyCurve, 'svg-plot svg-plot-secondary');
+    const currentX = xOf(s.focus.fNumber);
+    svgLine(curveSvg, currentX, top, currentX, bottom, 'svg-mark');
+    if (currentDof !== null && Number.isFinite(currentDof)) {
+      curveSvg.append(svgEl('circle', { cx: String(currentX), cy: String(yDof(currentDof)), r: '4.5', class: 'svg-point' }));
+    }
+    curveSvg.append(svgEl('circle', { cx: String(currentX), cy: String(yAiry(f.airyDiameterUm)), r: '4.5', class: 'svg-point svg-point-secondary' }));
+    curveSvg.append(svgEl('text', {
+      x: String(Math.min(right - 4, currentX + 8)), y: String(top + 32), class: 'svg-text',
+      'text-anchor': currentX > right - 130 ? 'end' : 'start'
+    }, 'Current f/' + formatNumber(s.focus.fNumber) + (currentDof === null ? ' · DOF unbounded' : '')));
+    addFigure(blocks, curveSvg, 'Solid curve: geometric depth of field read on the left axis (mm). Dashed curve: indicative Airy diameter read on the right axis (µm). The axes are scaled independently, so the curves show the tradeoff but are not a common pass/fail threshold. Current points and any unbounded depth-of-field limit are marked.');
+
+    const text = document.createElement('p');
+    text.textContent = 'Effective f-number is ' + formatQuantity(f.effectiveFNumber, 'N_eff') + ' at magnification ' + formatQuantity(o.magnification, '×') + '. Geometric depth of field is ' + formatQuantity(f.depthOfFieldMm, 'mm') + '. Airy diameter is ' + formatQuantity(f.airyDiameterUm, 'µm') + ' (' + formatQuantity(f.airyPixelsX, 'px') + ' on the x axis).';
+    container.append(text);
+    const note = document.createElement('p');
+    note.className = 'help';
+    note.textContent = 'Stopping down buys geometric depth of field but raises light demand and enlarges the diffraction scale. The height-coverage check uses the geometric band only.';
+    container.append(note);
+  }
+
+  function drawViews(s, r) {
+    renderCoverageView($('[data-view="coverage"]'), s, r);
+    renderDetailView($('[data-view="detail"]'), s, r);
+    renderMotionView($('[data-view="motion"]'), s, r);
+    renderLightingView($('[data-view="lighting"]'), s, r);
+    renderFocusView($('[data-view="focus"]'), s, r);
+  }
+  function saveActiveScenario() {
+    try {
+      const text = M.encodeScenario(state.active);
+      const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'vision-inspection-scenario.json';
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setMessage('Scenario saved as vision-inspection-scenario.json. The file contains inputs only, not derived results.');
+    } catch (error) {
+      setMessage('Save failed: ' + error.message + '. Correct the inputs, then try again.');
+    }
+  }
+
+  async function importScenario(file) {
+    try {
+      if (!file || file.size > 1000000) throw new Error('Choose a scenario file no larger than 1 MB');
+      const next = M.decodeScenario(await file.text());
+      state.active = next;
+      state.lesson = null;
+      state.sensorPreset = 'custom';
+      renderControls();
+      render();
+      setMessage('Scenario imported. Comparison snapshot, if any, was kept.');
+    } catch (error) {
+      setMessage('Import rejected: ' + error.message + '. Active and comparison scenarios are unchanged.');
+    }
+  }
+
+  function snapshotComparison() {
+    try {
+      M.encodeScenario(state.active);
+      state.comparison = clone(state.active);
+      render();
+      setMessage('Comparison snapshot captured from the current inputs. Ordinary edits now compare against it.');
+    } catch (error) {
+      setMessage('Snapshot failed: ' + error.message + '. Correct the inputs first.');
+    }
+  }
+
+  function clearComparison() {
+    state.comparison = null;
+    render();
+    setMessage('Comparison snapshot cleared. Active inputs were not changed.');
+  }
+
+  function resetExample() {
+    state.active = M.defaultScenario();
+    state.lesson = null;
+    state.sensorPreset = '8.8x6.6';
+    state.speedUnit = 'mm/s';
+    renderControls();
+    render();
+    setMessage('Default example restored. Comparison snapshot, if any, was kept.');
+  }
+
+  function loadLesson(key) {
+    const lesson = LESSONS[key];
+    if (!lesson) return;
+    state.lesson = key;
+    state.active = clone(lesson.base());
+    state.comparison = clone(lesson.comparison());
+    state.sensorPreset = 'custom';
+    renderControls();
+    render();
+    setMessage('Teaching lesson loaded: ' + lesson.title + '. Its fixed comparison snapshot replaced any previous snapshot.');
+  }
+
+  function resetLesson() {
+    if (!state.lesson) {
+      setMessage('No lesson is loaded. Use Reset example to restore the default scenario.');
+      return;
+    }
+    const lesson = LESSONS[state.lesson];
+    state.active = clone(lesson.base());
+    state.comparison = clone(lesson.comparison());
+    state.sensorPreset = 'custom';
+    renderControls();
+    render();
+    setMessage('Lesson reset to its starting setup. Unrelated saved files were not touched.');
+  }
+
+  function returnToExample() {
+    state.active = M.defaultScenario();
+    state.comparison = null;
+    state.lesson = null;
+    state.sensorPreset = '8.8x6.6';
+    state.speedUnit = 'mm/s';
+    renderControls();
+    render();
+    setMessage('Returned to the default example. The lesson comparison snapshot was cleared.');
+  }
+
+  function useReferenceValues() {
+    const reference = state.active.lighting.reference;
+    if (reference === null) return;
+    const result = M.evaluate(state.active);
+    const integration = state.active.motion.illumination === 'strobe'
+      ? state.active.motion.pulseUs : state.active.motion.exposureUs;
+    reference.integrationUs = Number.isFinite(integration) && integration > 0 ? integration : reference.integrationUs;
+    reference.effectiveFNumber = result.focus && Number.isFinite(result.focus.effectiveFNumber)
+      ? result.focus.effectiveFNumber : reference.effectiveFNumber;
+    reference.confirmedComparable = false;
+    renderControls();
+    render();
+    setMessage('Reference now uses the current integration time and effective f-number. Confirm comparability again to restore the signal check.');
+  }
+
+  function removeReference() {
+    state.active.lighting.reference = null;
+    renderControls();
+    render();
+    setMessage('Lighting reference removed. Relative signal is now not assessed.');
+  }
+
+  function handleClick(event) {
+    const lessonButton = event.target.closest('[data-lesson]');
+    if (lessonButton) {
+      loadLesson(lessonButton.dataset.lesson);
+      return;
+    }
+    const actionButton = event.target.closest('[data-action]');
+    if (actionButton) {
+      const action = actionButton.dataset.action;
+      if (action === 'reset-lesson') resetLesson();
+      else if (action === 'return-example') returnToExample();
+      else if (action === 'use-reference') useReferenceValues();
+      else if (action === 'remove-reference') removeReference();
+      return;
+    }
+    const id = event.target.id;
+    if (id === 'save-button') saveActiveScenario();
+    else if (id === 'snapshot-button') snapshotComparison();
+    else if (id === 'clear-comparison-button') clearComparison();
+    else if (id === 'reset-button') resetExample();
+    else if (id === 'print-button') window.print();
+  }
+
+  function init() {
+    renderControls();
+    applyTheme();
+    document.addEventListener('input', onInput);
+    document.addEventListener('change', onChange);
+    document.addEventListener('click', handleClick);
+    const importInput = $('#import-file');
+    importInput.addEventListener('change', () => {
+      const file = importInput.files && importInput.files[0];
+      if (file) importScenario(file);
+      importInput.value = '';
+    });
+    render();
+  }
+  init();
+})();
+</script>
+</body>
+</html>
